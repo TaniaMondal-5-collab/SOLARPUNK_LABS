@@ -1,0 +1,702 @@
+rules_version = '2';
+
+// ===============================================================
+// Assumed Data Model
+// ===============================================================
+//
+// This security rules file assumes the following data structures:
+//
+// Collection: users
+// Document ID: {userId} (matches Firebase Auth UID)
+// Fields:
+//   - id: string (required, 1-128 chars, matches auth.uid)
+//   - name: string (required, 1-100 chars)
+//   - email: string (required, valid email pattern, 5-100 chars)
+//   - role: string (required, enum: 'customer' | 'pharmacy' | 'admin')
+//   - phone: string (optional, 5-30 chars)
+//   - location: map (optional, lat, lng, address, city, pincode)
+//   - pharmacyId: string (optional, 1-128 chars, links pharmacy staff to pharmacy)
+//   - createdAt: timestamp or ISO string (required, immutable)
+//
+// Collection: medicines
+// Document ID: {medicineId} (e.g., 'med_aug625')
+// Fields:
+//   - id: string (required, 1-128 chars, immutable)
+//   - name: string (required, 1-200 chars)
+//   - brand: string (required, 1-200 chars)
+//   - genericName: string (required, 1-200 chars)
+//   - strength: string (required, 1-100 chars)
+//   - dosageForm: string (required, enum: Tablet, Capsule, Syrup, Injection, Inhaler, Drops, Ointment, Suspension, Powder)
+//   - packSize: string (required, 1-100 chars)
+//   - category: string (required, 1-100 chars)
+//   - isRx: bool (required)
+//   - mrp: number (required, >= 0)
+//   - description: string (required, 1-2000 chars)
+//   - storageCondition: string (optional, 1-200 chars)
+//   - imageUrl: string (optional, valid URL, 1-500 chars)
+//
+// Collection: pharmacies
+// Document ID: {pharmacyId} (e.g., 'pharmacy_frank_ross_saltlake')
+// Fields:
+//   - id: string (required, 1-128 chars, immutable)
+//   - name: string (required, 1-200 chars)
+//   - chain: string (required, enum: 'Frank Ross', 'Apollo Pharmacy', 'MedPlus', 'Lifeline Pharmacy', 'Independent')
+//   - address: string (required, 1-300 chars)
+//   - area: string (required, 1-100 chars)
+//   - city: string (required, 1-100 chars)
+//   - pincode: string (required, 1-20 chars)
+//   - lat: number (required, -90 to 90)
+//   - lng: number (required, -180 to 180)
+//   - phone: string (required, 5-30 chars)
+//   - email: string (optional, valid email, 5-100 chars)
+//   - openingHours: string (required, 1-100 chars)
+//   - is24x7: bool (required)
+//   - isVerified: bool (required, admin-only modification)
+//   - verificationStatus: string (required, enum: 'VERIFIED', 'PENDING', 'REJECTED', admin-only modification)
+//   - licenseNumber: string (optional, 1-100 chars)
+//   - rating: number (optional, 0 to 5)
+//   - deliveryAvailable: bool (optional)
+//   - ownerId: string (optional, 1-128 chars)
+//   - staffIds: list of strings (optional, max 50 items)
+//
+// Collection: inventory
+// Document ID: {inventoryId} (e.g., 'inv_12345')
+// Fields:
+//   - id: string (required, 1-128 chars, immutable)
+//   - pharmacyId: string (required, 1-128 chars, immutable)
+//   - medicineId: string (required, 1-128 chars, immutable)
+//   - quantity: int (required, >= 0, cannot be negative)
+//   - unitPrice: number (required, >= 0)
+//   - batchNumber: string (required, 1-100 chars)
+//   - expiryDate: string (required, 1-50 chars)
+//   - status: string (required, enum: 'AVAILABLE', 'LOW_STOCK', 'OUT_OF_STOCK', 'UNCONFIRMED')
+//   - confidence: string (required, enum: 'PHARMACY_CONFIRMED', 'RECENTLY_UPDATED', 'OUTDATED', 'UNVERIFIED')
+//   - confidenceReason: string (required, 1-500 chars)
+//   - provenance: string (required, enum: 'LIVE PARTNER UPDATE', 'PHARMACY CONFIRMED', 'RECENTLY UPDATED', 'DEMO INVENTORY', 'NOT VERIFIED')
+//   - lastUpdated: timestamp or ISO string (required)
+//   - updatedBy: string (required, 1-128 chars)
+//
+// Collection: reservations
+// Document ID: {reservationId} (e.g., 'res_1731171800000')
+// Fields:
+//   - id: string (required, 1-128 chars, immutable)
+//   - customerId: string (required, 1-128 chars, immutable, matches auth.uid)
+//   - customerName: string (required, 1-100 chars)
+//   - customerPhone: string (required, 5-30 chars)
+//   - pharmacyId: string (required, 1-128 chars, immutable)
+//   - pharmacyName: string (required, 1-200 chars)
+//   - pharmacyAddress: string (required, 1-300 chars)
+//   - pharmacyPhone: string (required, 5-30 chars)
+//   - medicineId: string (required, 1-128 chars, immutable)
+//   - medicineName: string (required, 1-200 chars)
+//   - strength: string (required, 1-100 chars)
+//   - dosageForm: string (required, 1-100 chars)
+//   - quantity: int (required, 1 to 100, immutable)
+//   - unitPrice: number (required, >= 0)
+//   - totalPrice: number (required, >= 0, immutable)
+//   - status: string (required, enum: 'PENDING', 'ACCEPTED', 'READY_FOR_PICKUP', 'COLLECTED', 'REJECTED', 'CANCELLED', 'EXPIRED')
+//   - prescriptionRequired: bool (required)
+//   - prescriptionUploaded: bool (optional)
+//   - prescriptionFileName: string (optional, 1-200 chars)
+//   - pickupWindow: string (optional, 1-200 chars)
+//   - customerNotes: string (optional, 1-500 chars)
+//   - pharmacyNotes: string (optional, 1-500 chars)
+//   - rejectionReason: string (optional, 1-500 chars)
+//   - timeline: list (required, max 25 events)
+//   - createdAt: timestamp or ISO string (required, immutable)
+//   - updatedAt: timestamp or ISO string (required)
+//
+// Collection: pharmacyVerificationRequests
+// Document ID: {requestId} (e.g., 'req_12345')
+// Fields:
+//   - id: string (required, 1-128 chars, immutable)
+//   - pharmacyId: string (required, 1-128 chars, immutable)
+//   - pharmacyName: string (required, 1-200 chars)
+//   - ownerName: string (required, 1-100 chars)
+//   - email: string (required, valid email, 5-100 chars)
+//   - phone: string (required, 5-30 chars)
+//   - drugLicenseNumber: string (required, 1-100 chars)
+//   - gstin: string (required, 1-50 chars)
+//   - address: string (required, 1-300 chars)
+//   - city: string (required, 1-100 chars)
+//   - pincode: string (required, 1-20 chars)
+//   - documentName: string (required, 1-200 chars)
+//   - submittedAt: timestamp or ISO string (required, immutable)
+//   - status: string (required, enum: 'PENDING', 'APPROVED', 'REJECTED')
+//   - reviewNotes: string (optional, 1-500 chars)
+//   - reviewedAt: timestamp or ISO string (optional)
+//   - userId: string (optional, 1-128 chars, applicant UID)
+//
+// Collection: searchHistory & savedMedicines
+// Scoped strictly to authenticated user's own data.
+// Supported both under /users/{userId}/... and root collections with userId ownership check.
+//
+// Collection: inventoryUpdateLogs
+// Immutable audit trail for pharmacy stock changes.
+//
+// ===============================================================
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ===============================================================
+    // Global Default Deny
+    // ===============================================================
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+
+    // Check if the user is authenticated with Firebase Auth
+    function isAuthenticated() {
+      return request.auth != null && request.auth.uid != null;
+    }
+
+    // Check if the current authenticated user matches the specified userId
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    // Check if the caller has verified admin privileges
+    // Authority derived strictly from custom claims, verified bootstrap email, or verified user record
+    function isAdmin() {
+      return isAuthenticated() && (
+        (request.auth.token.role == 'admin') ||
+        (request.auth.token.admin == true) ||
+        (request.auth.token.email == 'admin@medbridge.health' && request.auth.token.email_verified == true) ||
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin')
+      );
+    }
+
+    // Check if the caller is verified staff for the specified pharmacyId
+    function isPharmacyStaff(pharmacyId) {
+      return isAuthenticated() && (
+        (request.auth.token.role == 'pharmacy' && request.auth.token.pharmacyId == pharmacyId) ||
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'pharmacy' &&
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.pharmacyId == pharmacyId)
+      );
+    }
+
+    // Check if the caller is pharmacy staff or an explicitly declared owner/staff member on the pharmacy document
+    function isPharmacyStaffOrOwner(pharmacyId) {
+      return isPharmacyStaff(pharmacyId) ||
+        (resource != null && (
+          ('ownerId' in resource.data && resource.data.ownerId == request.auth.uid) ||
+          ('staffIds' in resource.data && resource.data.staffIds is list && request.auth.uid in resource.data.staffIds)
+        ));
+    }
+
+    // Validate string length (defense against Resource Exhaustion & DoS attacks)
+    function validStringLength(str, minLen, maxLen) {
+      return str is string && str.size() >= minLen && str.size() <= maxLen;
+    }
+
+    // Validate email format
+    function isValidEmail(email) {
+      return email is string &&
+        email.size() >= 5 &&
+        email.size() <= 100 &&
+        email.matches('^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$');
+    }
+
+    // Validate timestamp or ISO-8601 date string
+    function isValidTimestampOrIso(val) {
+      return val is timestamp || (val is string && val.size() >= 1 && val.size() <= 50);
+    }
+
+    // Validate location sub-map structure and coordinate ranges
+    function isValidLocationMap(loc) {
+      return loc is map &&
+        loc.keys().hasAll(['lat', 'lng', 'address', 'city', 'pincode']) &&
+        loc.keys().hasOnly(['lat', 'lng', 'address', 'city', 'pincode']) &&
+        loc.lat is number && loc.lat >= -90 && loc.lat <= 90 &&
+        loc.lng is number && loc.lng >= -180 && loc.lng <= 180 &&
+        validStringLength(loc.address, 1, 200) &&
+        validStringLength(loc.city, 1, 100) &&
+        validStringLength(loc.pincode, 1, 20);
+    }
+
+    // ===============================================================
+    // Domain Validator Functions (Validator Function Pattern)
+    // Mandatory: Evaluated in BOTH create and update operations
+    // ===============================================================
+
+    // Domain Validator: User Profiles
+    function isValidUser(data) {
+      return data.keys().hasAll(['id', 'name', 'email', 'role', 'createdAt']) &&
+        data.keys().hasOnly(['id', 'name', 'email', 'role', 'phone', 'location', 'pharmacyId', 'createdAt']) &&
+        validStringLength(data.id, 1, 128) &&
+        validStringLength(data.name, 1, 100) &&
+        isValidEmail(data.email) &&
+        data.role in ['customer', 'pharmacy', 'admin'] &&
+        isValidTimestampOrIso(data.createdAt) &&
+        (!('phone' in data) || validStringLength(data.phone, 5, 30)) &&
+        (!('pharmacyId' in data) || validStringLength(data.pharmacyId, 1, 128)) &&
+        (!('location' in data) || isValidLocationMap(data.location));
+    }
+
+    // Domain Validator: Master Medicines Catalog
+    function isValidMedicine(data) {
+      return data.keys().hasAll([
+          'id', 'name', 'brand', 'genericName', 'strength',
+          'dosageForm', 'packSize', 'category', 'isRx', 'mrp', 'description'
+        ]) &&
+        data.keys().hasOnly([
+          'id', 'name', 'brand', 'genericName', 'strength',
+          'dosageForm', 'packSize', 'category', 'isRx', 'mrp', 'description',
+          'storageCondition', 'imageUrl'
+        ]) &&
+        validStringLength(data.id, 1, 128) &&
+        validStringLength(data.name, 1, 200) &&
+        validStringLength(data.brand, 1, 200) &&
+        validStringLength(data.genericName, 1, 200) &&
+        validStringLength(data.strength, 1, 100) &&
+        data.dosageForm in ['Tablet', 'Capsule', 'Syrup', 'Injection', 'Inhaler', 'Drops', 'Ointment', 'Suspension', 'Powder'] &&
+        validStringLength(data.packSize, 1, 100) &&
+        validStringLength(data.category, 1, 100) &&
+        data.isRx is bool &&
+        data.mrp is number && data.mrp >= 0 &&
+        validStringLength(data.description, 1, 2000) &&
+        (!('storageCondition' in data) || validStringLength(data.storageCondition, 1, 200)) &&
+        (!('imageUrl' in data) || (data.imageUrl is string && data.imageUrl.size() <= 500 && (data.imageUrl.matches('^https?://.*') || data.imageUrl.matches('^/.*'))));
+    }
+
+    // Domain Validator: Pharmacies Profile
+    function isValidPharmacy(data) {
+      return data.keys().hasAll([
+          'id', 'name', 'chain', 'address', 'area', 'city',
+          'pincode', 'lat', 'lng', 'phone', 'openingHours',
+          'is24x7', 'isVerified', 'verificationStatus'
+        ]) &&
+        data.keys().hasOnly([
+          'id', 'name', 'chain', 'address', 'area', 'city',
+          'pincode', 'lat', 'lng', 'phone', 'email', 'openingHours',
+          'is24x7', 'isVerified', 'verificationStatus', 'licenseNumber',
+          'rating', 'deliveryAvailable', 'ownerId', 'staffIds'
+        ]) &&
+        validStringLength(data.id, 1, 128) &&
+        validStringLength(data.name, 1, 200) &&
+        data.chain in ['Frank Ross', 'Apollo Pharmacy', 'MedPlus', 'Lifeline Pharmacy', 'Independent'] &&
+        validStringLength(data.address, 1, 300) &&
+        validStringLength(data.area, 1, 100) &&
+        validStringLength(data.city, 1, 100) &&
+        validStringLength(data.pincode, 1, 20) &&
+        data.lat is number && data.lat >= -90 && data.lat <= 90 &&
+        data.lng is number && data.lng >= -180 && data.lng <= 180 &&
+        validStringLength(data.phone, 5, 30) &&
+        validStringLength(data.openingHours, 1, 100) &&
+        data.is24x7 is bool &&
+        data.isVerified is bool &&
+        data.verificationStatus in ['VERIFIED', 'PENDING', 'REJECTED'] &&
+        (!('email' in data) || isValidEmail(data.email)) &&
+        (!('licenseNumber' in data) || validStringLength(data.licenseNumber, 1, 100)) &&
+        (!('rating' in data) || (data.rating is number && data.rating >= 0 && data.rating <= 5)) &&
+        (!('deliveryAvailable' in data) || data.deliveryAvailable is bool) &&
+        (!('ownerId' in data) || validStringLength(data.ownerId, 1, 128)) &&
+        (!('staffIds' in data) || (data.staffIds is list && data.staffIds.size() <= 50));
+    }
+
+    // Domain Validator: Pharmacy Inventory
+    function isValidInventory(data) {
+      return data.keys().hasAll([
+          'id', 'pharmacyId', 'medicineId', 'quantity', 'unitPrice',
+          'batchNumber', 'expiryDate', 'status', 'confidence',
+          'confidenceReason', 'provenance', 'lastUpdated', 'updatedBy'
+        ]) &&
+        data.keys().hasOnly([
+          'id', 'pharmacyId', 'medicineId', 'quantity', 'unitPrice',
+          'batchNumber', 'expiryDate', 'status', 'confidence',
+          'confidenceReason', 'provenance', 'lastUpdated', 'updatedBy'
+        ]) &&
+        validStringLength(data.id, 1, 128) &&
+        validStringLength(data.pharmacyId, 1, 128) &&
+        validStringLength(data.medicineId, 1, 128) &&
+        data.quantity is int && data.quantity >= 0 && // Explicit invariant: quantity cannot be negative
+        data.unitPrice is number && data.unitPrice >= 0 &&
+        validStringLength(data.batchNumber, 1, 100) &&
+        validStringLength(data.expiryDate, 1, 50) &&
+        data.status in ['AVAILABLE', 'LOW_STOCK', 'OUT_OF_STOCK', 'UNCONFIRMED'] &&
+        data.confidence in ['PHARMACY_CONFIRMED', 'RECENTLY_UPDATED', 'OUTDATED', 'UNVERIFIED'] &&
+        validStringLength(data.confidenceReason, 1, 500) &&
+        data.provenance in ['LIVE PARTNER UPDATE', 'PHARMACY CONFIRMED', 'RECENTLY UPDATED', 'DEMO INVENTORY', 'NOT VERIFIED'] &&
+        isValidTimestampOrIso(data.lastUpdated) &&
+        validStringLength(data.updatedBy, 1, 128);
+    }
+
+    // Domain Validator: Medicine Reservations
+    function isValidReservation(data) {
+      return data.keys().hasAll([
+          'id', 'customerId', 'customerName', 'customerPhone',
+          'pharmacyId', 'pharmacyName', 'pharmacyAddress', 'pharmacyPhone',
+          'medicineId', 'medicineName', 'strength', 'dosageForm',
+          'quantity', 'unitPrice', 'totalPrice', 'status',
+          'prescriptionRequired', 'timeline', 'createdAt', 'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'id', 'customerId', 'customerName', 'customerPhone',
+          'pharmacyId', 'pharmacyName', 'pharmacyAddress', 'pharmacyPhone',
+          'medicineId', 'medicineName', 'strength', 'dosageForm',
+          'quantity', 'unitPrice', 'totalPrice', 'status',
+          'prescriptionRequired', 'prescriptionUploaded', 'prescriptionFileName',
+          'pickupWindow', 'customerNotes', 'pharmacyNotes', 'rejectionReason',
+          'timeline', 'createdAt', 'updatedAt'
+        ]) &&
+        validStringLength(data.id, 1, 128) &&
+        validStringLength(data.customerId, 1, 128) &&
+        validStringLength(data.customerName, 1, 100) &&
+        validStringLength(data.customerPhone, 5, 30) &&
+        validStringLength(data.pharmacyId, 1, 128) &&
+        validStringLength(data.pharmacyName, 1, 200) &&
+        validStringLength(data.pharmacyAddress, 1, 300) &&
+        validStringLength(data.pharmacyPhone, 5, 30) &&
+        validStringLength(data.medicineId, 1, 128) &&
+        validStringLength(data.medicineName, 1, 200) &&
+        validStringLength(data.strength, 1, 100) &&
+        validStringLength(data.dosageForm, 1, 100) &&
+        data.quantity is int && data.quantity > 0 && data.quantity <= 100 &&
+        data.unitPrice is number && data.unitPrice >= 0 &&
+        data.totalPrice is number && data.totalPrice >= 0 &&
+        data.status in ['PENDING', 'ACCEPTED', 'READY_FOR_PICKUP', 'COLLECTED', 'REJECTED', 'CANCELLED', 'EXPIRED'] &&
+        data.prescriptionRequired is bool &&
+        (!('prescriptionUploaded' in data) || data.prescriptionUploaded is bool) &&
+        (!('prescriptionFileName' in data) || validStringLength(data.prescriptionFileName, 1, 200)) &&
+        (!('pickupWindow' in data) || validStringLength(data.pickupWindow, 1, 200)) &&
+        (!('customerNotes' in data) || validStringLength(data.customerNotes, 1, 500)) &&
+        (!('pharmacyNotes' in data) || validStringLength(data.pharmacyNotes, 1, 500)) &&
+        (!('rejectionReason' in data) || validStringLength(data.rejectionReason, 1, 500)) &&
+        data.timeline is list && data.timeline.size() <= 25 &&
+        isValidTimestampOrIso(data.createdAt) &&
+        isValidTimestampOrIso(data.updatedAt);
+    }
+
+    // Domain Validator: Pharmacy Verification Requests
+    function isValidVerificationRequest(data) {
+      return data.keys().hasAll([
+          'id', 'pharmacyId', 'pharmacyName', 'ownerName', 'email',
+          'phone', 'drugLicenseNumber', 'gstin', 'address', 'city',
+          'pincode', 'documentName', 'submittedAt', 'status'
+        ]) &&
+        data.keys().hasOnly([
+          'id', 'pharmacyId', 'pharmacyName', 'ownerName', 'email',
+          'phone', 'drugLicenseNumber', 'gstin', 'address', 'city',
+          'pincode', 'documentName', 'submittedAt', 'status',
+          'reviewNotes', 'reviewedAt', 'userId'
+        ]) &&
+        validStringLength(data.id, 1, 128) &&
+        validStringLength(data.pharmacyId, 1, 128) &&
+        validStringLength(data.pharmacyName, 1, 200) &&
+        validStringLength(data.ownerName, 1, 100) &&
+        isValidEmail(data.email) &&
+        validStringLength(data.phone, 5, 30) &&
+        validStringLength(data.drugLicenseNumber, 1, 100) &&
+        validStringLength(data.gstin, 1, 50) &&
+        validStringLength(data.address, 1, 300) &&
+        validStringLength(data.city, 1, 100) &&
+        validStringLength(data.pincode, 1, 20) &&
+        validStringLength(data.documentName, 1, 200) &&
+        isValidTimestampOrIso(data.submittedAt) &&
+        data.status in ['PENDING', 'APPROVED', 'REJECTED'] &&
+        (!('reviewNotes' in data) || validStringLength(data.reviewNotes, 1, 500)) &&
+        (!('reviewedAt' in data) || isValidTimestampOrIso(data.reviewedAt)) &&
+        (!('userId' in data) || validStringLength(data.userId, 1, 128));
+    }
+
+    // Domain Validator: Search History Items
+    function isValidSearchHistory(data) {
+      return data.keys().hasAll(['id', 'query', 'searchType', 'timestamp']) &&
+        data.keys().hasOnly(['id', 'userId', 'query', 'searchType', 'medicineId', 'medicineName', 'timestamp']) &&
+        validStringLength(data.id, 1, 128) &&
+        validStringLength(data.query, 1, 200) &&
+        data.searchType in ['TEXT', 'IMAGE', 'URL'] &&
+        isValidTimestampOrIso(data.timestamp) &&
+        (!('userId' in data) || validStringLength(data.userId, 1, 128)) &&
+        (!('medicineId' in data) || validStringLength(data.medicineId, 1, 128)) &&
+        (!('medicineName' in data) || validStringLength(data.medicineName, 1, 200));
+    }
+
+    // Domain Validator: Saved Medicines
+    function isValidSavedMedicine(data) {
+      return data.keys().hasAll(['medicineId']) &&
+        data.keys().hasOnly(['id', 'userId', 'medicineId', 'savedAt']) &&
+        validStringLength(data.medicineId, 1, 128) &&
+        (!('id' in data) || validStringLength(data.id, 1, 128)) &&
+        (!('userId' in data) || validStringLength(data.userId, 1, 128)) &&
+        (!('savedAt' in data) || isValidTimestampOrIso(data.savedAt));
+    }
+
+    // Domain Validator: Inventory Audit Update Logs
+    function isValidInventoryUpdateLog(data) {
+      return data.keys().hasAll([
+          'id', 'pharmacyId', 'medicineId', 'medicineName',
+          'previousQuantity', 'newQuantity', 'previousStatus',
+          'newStatus', 'timestamp', 'updatedBy', 'action'
+        ]) &&
+        data.keys().hasOnly([
+          'id', 'pharmacyId', 'medicineId', 'medicineName',
+          'previousQuantity', 'newQuantity', 'previousStatus',
+          'newStatus', 'timestamp', 'updatedBy', 'action'
+        ]) &&
+        validStringLength(data.id, 1, 128) &&
+        validStringLength(data.pharmacyId, 1, 128) &&
+        validStringLength(data.medicineId, 1, 128) &&
+        validStringLength(data.medicineName, 1, 200) &&
+        data.previousQuantity is int && data.previousQuantity >= 0 &&
+        data.newQuantity is int && data.newQuantity >= 0 &&
+        data.previousStatus in ['AVAILABLE', 'LOW_STOCK', 'OUT_OF_STOCK', 'UNCONFIRMED'] &&
+        data.newStatus in ['AVAILABLE', 'LOW_STOCK', 'OUT_OF_STOCK', 'UNCONFIRMED'] &&
+        isValidTimestampOrIso(data.timestamp) &&
+        validStringLength(data.updatedBy, 1, 128) &&
+        data.action in ['UPDATE_STOCK', 'ADD_MEDICINE', 'RESERVATION_HOLD', 'RESERVATION_RELEASE', 'RESERVATION_COLLECT'];
+    }
+
+    // ===============================================================
+    // Collection Rules
+    // ===============================================================
+
+    // 1. `users` collection:
+    // - Authenticated users can read and write only their own user document (request.auth.uid == userId)
+    // - Customers cannot alter their role to pharmacy or admin
+    // - Blanket read is prohibited to protect PII
+    match /users/{userId} {
+      allow read: if isOwner(userId) || isAdmin();
+
+      // On creation: customer role is strictly enforced unless bootstrapped by admin
+      allow create: if isAuthenticated() &&
+        isValidUser(request.resource.data) &&
+        request.resource.data.id == userId &&
+        (
+          (isOwner(userId) && request.resource.data.role == 'customer') ||
+          isAdmin()
+        );
+
+      // On update: user can never escalate role; id and createdAt are immutable
+      allow update: if isAuthenticated() &&
+        isValidUser(request.resource.data) &&
+        request.resource.data.id == resource.data.id &&
+        request.resource.data.createdAt == resource.data.createdAt &&
+        (
+          (isOwner(userId) && request.resource.data.role == resource.data.role) ||
+          isAdmin()
+        );
+
+      allow delete: if isOwner(userId) || isAdmin();
+
+      // Scoped user subcollections (Requirement 7)
+      match /searchHistory/{searchId} {
+        allow read, delete: if isOwner(userId);
+        allow create: if isOwner(userId) && isValidSearchHistory(request.resource.data);
+        allow update: if isOwner(userId) && isValidSearchHistory(request.resource.data);
+      }
+
+      match /savedMedicines/{savedId} {
+        allow read, delete: if isOwner(userId);
+        allow create: if isOwner(userId) && isValidSavedMedicine(request.resource.data);
+        allow update: if isOwner(userId) && isValidSavedMedicine(request.resource.data);
+      }
+    }
+
+    // 2. `medicines` collection:
+    // - Anyone authenticated can read master medicines catalog
+    // - Only admins can create/update/delete master medicines
+    match /medicines/{medicineId} {
+      allow read: if isAuthenticated();
+
+      allow create: if isAdmin() &&
+        isValidMedicine(request.resource.data) &&
+        request.resource.data.id == medicineId;
+
+      allow update: if isAdmin() &&
+        isValidMedicine(request.resource.data) &&
+        request.resource.data.id == resource.data.id;
+
+      allow delete: if isAdmin();
+    }
+
+    // 3. `pharmacies` collection:
+    // - Publicly readable for customer pharmacy discovery (listing store names, address, lat/lng, phone, opening hours)
+    // - Only pharmacy owners/staff authorized for that specific pharmacy (or admins) can update the pharmacy profile
+    // - Verification status and badge can only be modified by admins
+    match /pharmacies/{pharmacyId} {
+      allow read: if true;
+
+      allow create: if isAuthenticated() &&
+        isValidPharmacy(request.resource.data) &&
+        request.resource.data.id == pharmacyId &&
+        (
+          isAdmin() ||
+          (
+            isPharmacyStaff(pharmacyId) &&
+            request.resource.data.isVerified == false &&
+            request.resource.data.verificationStatus == 'PENDING'
+          )
+        );
+
+      // Staff can update store profile but verification status remains locked to admin control
+      allow update: if isAuthenticated() &&
+        isValidPharmacy(request.resource.data) &&
+        request.resource.data.id == resource.data.id &&
+        (
+          isAdmin() ||
+          (
+            isPharmacyStaffOrOwner(pharmacyId) &&
+            request.resource.data.isVerified == resource.data.isVerified &&
+            request.resource.data.verificationStatus == resource.data.verificationStatus
+          )
+        );
+
+      allow delete: if isAdmin();
+    }
+
+    // 4. `inventory` collection:
+    // - Customers can read inventory (to check availability)
+    // - Customers CANNOT edit pharmacy inventory
+    // - Only authorized pharmacy staff for that specific pharmacy can create/update inventory records
+    // - Validates that quantity cannot be negative
+    match /inventory/{inventoryId} {
+      allow read: if isAuthenticated();
+
+      allow create: if isAuthenticated() &&
+        isValidInventory(request.resource.data) &&
+        request.resource.data.id == inventoryId &&
+        (isPharmacyStaff(request.resource.data.pharmacyId) || isAdmin());
+
+      allow update: if isAuthenticated() &&
+        isValidInventory(request.resource.data) &&
+        request.resource.data.id == resource.data.id &&
+        request.resource.data.pharmacyId == resource.data.pharmacyId &&
+        request.resource.data.medicineId == resource.data.medicineId &&
+        (isPharmacyStaff(resource.data.pharmacyId) || isAdmin());
+
+      allow delete: if isAuthenticated() &&
+        (isPharmacyStaff(resource.data.pharmacyId) || isAdmin());
+    }
+
+    // 5. `reservations` collection:
+    // - Customers can create reservations with their own customerId
+    // - Customers can read and cancel their own reservations
+    // - Pharmacy staff of the target pharmacy can read, accept, reject, or mark collected reservations for their store
+    // - Prevent unauthorized users from modifying someone else's reservation
+    match /reservations/{reservationId} {
+      allow read: if isOwner(resource.data.customerId) ||
+        isPharmacyStaff(resource.data.pharmacyId) ||
+        isAdmin();
+
+      allow create: if isAuthenticated() &&
+        isValidReservation(request.resource.data) &&
+        request.resource.data.id == reservationId &&
+        request.resource.data.customerId == request.auth.uid &&
+        request.resource.data.status == 'PENDING';
+
+      allow update: if isAuthenticated() &&
+        isValidReservation(request.resource.data) &&
+        request.resource.data.id == resource.data.id &&
+        request.resource.data.customerId == resource.data.customerId &&
+        request.resource.data.pharmacyId == resource.data.pharmacyId &&
+        request.resource.data.medicineId == resource.data.medicineId &&
+        request.resource.data.quantity == resource.data.quantity &&
+        request.resource.data.totalPrice == resource.data.totalPrice &&
+        request.resource.data.createdAt == resource.data.createdAt &&
+        (
+          // Customer can only cancel their own pending/accepted reservation
+          (
+            isOwner(resource.data.customerId) &&
+            resource.data.status in ['PENDING', 'ACCEPTED'] &&
+            request.resource.data.status == 'CANCELLED'
+          ) ||
+          // Pharmacy staff can transition reservation states
+          (
+            isPharmacyStaff(resource.data.pharmacyId) &&
+            (
+              (resource.data.status == 'PENDING' && request.resource.data.status in ['ACCEPTED', 'REJECTED']) ||
+              (resource.data.status == 'ACCEPTED' && request.resource.data.status in ['READY_FOR_PICKUP', 'COLLECTED', 'REJECTED']) ||
+              (resource.data.status == 'READY_FOR_PICKUP' && request.resource.data.status in ['COLLECTED', 'REJECTED'])
+            )
+          ) ||
+          // Admin override
+          isAdmin()
+        );
+
+      allow delete: if isAdmin();
+    }
+
+    // 6. `pharmacyVerificationRequests` collection:
+    // - Pharmacy user can create their own verification request
+    // - Only admins can read all requests and approve/reject them
+    match /pharmacyVerificationRequests/{requestId} {
+      // Submitting pharmacy user can create initial pending request
+      allow create: if isAuthenticated() &&
+        isValidVerificationRequest(request.resource.data) &&
+        request.resource.data.id == requestId &&
+        request.resource.data.status == 'PENDING' &&
+        (!('userId' in request.resource.data) || request.resource.data.userId == request.auth.uid);
+
+      // Only admins can list all verification requests
+      allow list: if isAdmin();
+
+      // Only admins or the submitting pharmacy user can retrieve a specific verification request
+      allow get: if isAdmin() || (
+        isAuthenticated() && (
+          ('userId' in resource.data && resource.data.userId == request.auth.uid) ||
+          isPharmacyStaff(resource.data.pharmacyId)
+        )
+      );
+
+      // Only admins can approve, reject, or modify verification requests
+      allow update: if isAdmin() &&
+        isValidVerificationRequest(request.resource.data) &&
+        request.resource.data.id == resource.data.id &&
+        request.resource.data.pharmacyId == resource.data.pharmacyId &&
+        request.resource.data.submittedAt == resource.data.submittedAt;
+
+      allow delete: if isAdmin();
+    }
+
+    // 7. `searchHistory` collection (top-level variant):
+    // - Scoped strictly to the authenticated user's own data
+    match /searchHistory/{searchId} {
+      allow read, delete: if isAuthenticated() && resource.data.userId == request.auth.uid;
+
+      allow create: if isAuthenticated() &&
+        request.resource.data.userId == request.auth.uid &&
+        isValidSearchHistory(request.resource.data);
+
+      allow update: if isAuthenticated() &&
+        resource.data.userId == request.auth.uid &&
+        request.resource.data.userId == request.auth.uid &&
+        isValidSearchHistory(request.resource.data);
+    }
+
+    // 7. `savedMedicines` collection (top-level variant):
+    // - Scoped strictly to the authenticated user's own data
+    match /savedMedicines/{savedId} {
+      allow read, delete: if isAuthenticated() && resource.data.userId == request.auth.uid;
+
+      allow create: if isAuthenticated() &&
+        request.resource.data.userId == request.auth.uid &&
+        isValidSavedMedicine(request.resource.data);
+
+      allow update: if isAuthenticated() &&
+        resource.data.userId == request.auth.uid &&
+        request.resource.data.userId == request.auth.uid &&
+        isValidSavedMedicine(request.resource.data);
+    }
+
+    // 8. `inventoryUpdateLogs` collection:
+    // - Immutable audit log for pharmacy inventory actions
+    match /inventoryUpdateLogs/{logId} {
+      allow read: if (isAuthenticated() && isPharmacyStaff(resource.data.pharmacyId)) || isAdmin();
+
+      allow create: if isAuthenticated() &&
+        (isPharmacyStaff(request.resource.data.pharmacyId) || isAdmin()) &&
+        request.resource.data.updatedBy == request.auth.uid &&
+        isValidInventoryUpdateLog(request.resource.data);
+
+      allow update, delete: if false;
+    }
+  }
+}

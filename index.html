@@ -3,42 +3,74 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="description" content="ASTROBASE: Junior Astronaut Mission Trainer - 3D Space Simulation Game for NASA Space Apps Challenge 2026">
-  <title>ASTROBASE: Junior Astronaut Mission Trainer (3D Space Simulator)</title>
+  <meta name="description" content="MEDBRIDGE - Real-time Medicine Availability & Pharmacy Coordination Platform. Developed for Generative AI Clash Hackathon 2026.">
+  <title>MEDBRIDGE | Find Medicines. Connect Pharmacies. Save Time.</title>
 
-  <!-- Google Fonts: Orbitron (Cinematic Titles), Rajdhani (HUD/Body), JetBrains Mono (Telemetry) -->
+  <!-- Google Fonts: Plus Jakarta Sans (Fintech/SaaS), Inter, JetBrains Mono -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Orbitron:wght@600;700;800;900&family=Rajdhani:wght@500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 
-  <!-- Core Game Stylesheet -->
+  <!-- Leaflet CSS for Map Visualisation -->
+  <link rel="stylesheet" href="leaflet.css">
+
+  <!-- Core Stylesheet -->
   <link rel="stylesheet" href="styles.css">
+
+  <!-- Tailwind CSS Compiler -->
+  <script src="tailwind.js"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              navy: '#0A1128',
+              navySurface: '#0F172A',
+              navyCard: '#1E293B',
+              blue: '#2563EB',
+              blueHover: '#1D4ED8',
+              cyan: '#06B6D4',
+              cyanHover: '#0891B2'
+            }
+          },
+          fontFamily: {
+            sans: ['"Plus Jakarta Sans"', 'Inter', 'sans-serif'],
+            mono: ['"JetBrains Mono"', 'monospace']
+          }
+        }
+      }
+    }
+  </script>
 </head>
-<body>
-  <!-- 3D WebGL Simulation Canvas Container -->
-  <div id="canvas-3d"></div>
+<body class="bg-slate-50 text-slate-900 antialiased min-h-screen flex flex-col selection:bg-blue-500 selection:text-white">
+  <!-- React Mount Point -->
+  <div id="root" class="flex-grow flex flex-col">
+    <!-- Initial Loading State -->
+    <div class="min-h-screen flex flex-col items-center justify-center bg-slate-900 text-white gap-4">
+      <div class="w-12 h-12 rounded-xl bg-gradient-to-tr from-blue-600 to-cyan-400 flex items-center justify-center shadow-lg shadow-cyan-500/30 animate-pulse">
+        <svg class="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 4v16m8-8H4"></path>
+        </svg>
+      </div>
+      <h2 class="text-xl font-bold tracking-wider text-transparent bg-clip-text bg-gradient-to-r from-white via-cyan-200 to-blue-400">
+        MEDBRIDGE
+      </h2>
+      <p class="text-xs font-mono text-cyan-400 uppercase tracking-widest">Connecting Kolkata Pharmacy Network...</p>
+    </div>
+  </div>
 
-  <!-- React UI / HUD / Menu Root Layer -->
-  <div id="ui-root"></div>
+  <!-- Core Local Bundled Libraries -->
+  <script src="react.production.min.js"></script>
+  <script src="react-dom.production.min.js"></script>
+  <script src="leaflet.js"></script>
+  <script src="lucide.js"></script>
 
-  <!-- 1. Bundled Local Three.js 3D Game Engine (Zero external dependencies) -->
-  <script src="three.min.js"></script>
+  <!-- Database & Seed Data -->
+  <script src="data.js"></script>
 
-  <!-- 2. Synthesized Space Audio Engine -->
-  <script src="audio.js"></script>
-
-  <!-- 3. Curriculum Game Data & NASA Mission Scenarios -->
-  <script src="gameData.js"></script>
-
-  <!-- 4. Three.js 3D Lunar World, Astronaut Controller & Physics Engine -->
-  <script src="game3d.js"></script>
-
-  <!-- 5. Offline React Fallback Engine -->
-  <script src="reactShim.js"></script>
-  <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
-  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
-
-  <!-- 6. Main React UI & Game Campaign Manager -->
+  <!-- Main Application Script -->
   <script src="app.js"></script>
 </body>
 </html>

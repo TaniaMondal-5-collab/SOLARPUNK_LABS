@@ -1,717 +1,203 @@
-/* ASTROBASE: Junior Astronaut Mission Trainer */
-/* AAA PC-Game Visual Design System (Inspired by PUBG, Euro Truck Simulator 2, Star Citizen) */
+/* MEDBRIDGE - Professional Healthcare-Tech Design System */
+/* Tailored for Hackathon Standards: Deep Navy, Electric Blue, Cyan, Crisp White */
 
 :root {
-  --bg-dark: #030611;
-  --bg-hud: rgba(6, 11, 25, 0.82);
-  --bg-hud-solid: #090e21;
-  --border-hud: rgba(56, 189, 248, 0.25);
-  --border-hud-active: #00f0ff;
+  --primary-navy: #0A1128;
+  --secondary-navy: #0F172A;
+  --navy-card: #1E293B;
+  --electric-blue: #2563EB;
+  --electric-blue-hover: #1D4ED8;
+  --cyan-accent: #06B6D4;
+  --cyan-glow: rgba(6, 182, 212, 0.35);
   
-  --cyan-primary: #00f0ff;
-  --cyan-dim: #0284c7;
-  --purple-accent: #a855f7;
-  --gold-accent: #f59e0b;
-  --green-safe: #10b981;
-  --red-alert: #ef4444;
-  --text-main: #f8fafc;
-  --text-muted: #94a3b8;
-  --text-dim: #64748b;
+  --bg-customer: #F8FAFC;
+  --card-customer: #FFFFFF;
+  --text-dark: #0F172A;
+  --text-muted: #64748B;
+  --border-light: #E2E8F0;
 
-  --font-display: 'Orbitron', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  --font-hud: 'Rajdhani', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --success-green: #10B981;
+  --warning-amber: #F59E0B;
+  --danger-red: #EF4444;
+
+  --font-sans: 'Plus Jakarta Sans', 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-display: 'Plus Jakarta Sans', sans-serif;
   --font-mono: 'JetBrains Mono', monospace;
 
-  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.07), 0 2px 4px -2px rgba(0, 0, 0, 0.05);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.08), 0 4px 6px -4px rgba(0, 0, 0, 0.04);
+  --shadow-card: 0 12px 32px -4px rgba(10, 17, 40, 0.08);
+  --shadow-glass: 0 8px 32px 0 rgba(31, 38, 135, 0.15);
 }
 
 * {
   box-sizing: border-box;
   margin: 0;
   padding: 0;
-  user-select: none;
   -webkit-font-smoothing: antialiased;
 }
 
-html, body {
-  width: 100%;
-  height: 100%;
-  overflow: hidden;
-  background-color: var(--bg-dark);
-  color: var(--text-main);
-  font-family: var(--font-hud);
-  font-size: 16px;
+body {
+  font-family: var(--font-sans);
+  background-color: var(--bg-customer);
+  color: var(--text-dark);
+  line-height: 1.5;
+  overflow-x: hidden;
+  min-height: 100vh;
 }
 
-/* 3D Canvas Background Container */
-#canvas-3d {
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 100vw;
-  height: 100vh;
-  z-index: 1;
-  outline: none;
+/* Glassmorphism Classes */
+.glass-panel {
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.6);
 }
 
-/* UI Root Layer */
-#ui-root {
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 100vw;
-  height: 100vh;
-  z-index: 10;
-  pointer-events: none; /* Let 3D canvas receive pointer events unless UI elements are clicked */
+.glass-panel-dark {
+  background: rgba(15, 23, 42, 0.88);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
 }
 
-.interactive-ui {
-  pointer-events: auto;
-}
-
-/* =========================================================================
-   1. PROFESSIONAL PC GAME MAIN MENU (RIGHT-ALIGNED MENU)
-   ========================================================================= */
-
-.menu-screen-overlay {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  justify-content: space-between;
-  align-items: stretch;
-  padding: 60px 80px;
-  background: radial-gradient(circle at 80% 50%, rgba(3, 7, 18, 0.4) 0%, rgba(3, 7, 18, 0.85) 100%);
-  pointer-events: auto;
-  animation: fadeIn 0.6s var(--ease-out-expo);
-}
-
-/* Left Hero Branding */
-.menu-branding-left {
-  display: flex;
-  flex-direction: column;
-  justify-content: flex-end;
-  max-width: 650px;
-  margin-bottom: 30px;
-}
-
-.menu-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  font-family: var(--font-mono);
-  font-size: 0.75rem;
-  font-weight: 600;
-  letter-spacing: 2px;
-  color: var(--gold-accent);
-  background: rgba(245, 158, 11, 0.12);
-  border: 1px solid rgba(245, 158, 11, 0.35);
-  padding: 4px 12px;
-  border-radius: 4px;
-  margin-bottom: 16px;
-  width: fit-content;
-  text-transform: uppercase;
-}
-
-.menu-game-title {
-  font-family: var(--font-display);
-  font-size: 4.2rem;
-  font-weight: 900;
-  letter-spacing: 6px;
-  line-height: 0.95;
-  background: linear-gradient(180deg, #ffffff 20%, #94a3b8 100%);
+/* Brand Gradient Text */
+.text-gradient {
+  background: linear-gradient(135deg, #2563EB 0%, #06B6D4 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
-  text-shadow: 0 0 30px rgba(0, 240, 255, 0.4);
-  margin-bottom: 8px;
 }
 
-.menu-game-subtitle {
-  font-family: var(--font-display);
-  font-size: 1.25rem;
-  letter-spacing: 4px;
-  color: var(--cyan-primary);
-  text-transform: uppercase;
-  margin-bottom: 18px;
+.text-gradient-purple {
+  background: linear-gradient(135deg, #7C3AED 0%, #2563EB 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
 }
 
-.menu-tagline {
-  font-size: 1.15rem;
-  font-weight: 600;
-  color: #cbd5e1;
-  letter-spacing: 1px;
-  line-height: 1.5;
-  border-left: 3px solid var(--cyan-primary);
-  padding-left: 14px;
-  margin-bottom: 24px;
-}
-
-.menu-version-tag {
-  font-family: var(--font-mono);
-  font-size: 0.75rem;
-  color: var(--text-dim);
-  letter-spacing: 1px;
-}
-
-/* Right-Aligned Vertical Action Menu */
-.menu-actions-right {
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  gap: 12px;
-  width: 340px;
-}
-
-.menu-btn {
-  position: relative;
-  font-family: var(--font-display);
-  font-size: 1.05rem;
-  font-weight: 700;
-  letter-spacing: 3px;
-  color: #f1f5f9;
-  background: linear-gradient(90deg, rgba(15, 23, 42, 0.9) 0%, rgba(30, 41, 59, 0.8) 100%);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  border-left: 4px solid var(--border-hud);
-  padding: 16px 24px;
-  text-align: left;
-  cursor: pointer;
-  transition: all 0.22s var(--ease-out-expo);
-  text-transform: uppercase;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  backdrop-filter: blur(12px);
-  clip-path: polygon(0 0, 100% 0, 96% 100%, 0 100%);
-}
-
-.menu-btn:hover {
-  background: linear-gradient(90deg, rgba(2, 132, 199, 0.45) 0%, rgba(168, 85, 247, 0.45) 100%);
-  border-color: var(--cyan-primary);
-  border-left: 6px solid var(--cyan-primary);
-  color: #ffffff;
-  transform: translateX(-8px);
-  box-shadow: 0 0 25px rgba(0, 240, 255, 0.35);
-}
-
-.menu-btn:active {
-  transform: translateX(-4px) scale(0.98);
-}
-
-.menu-btn.primary-btn {
-  background: linear-gradient(90deg, rgba(2, 132, 199, 0.7) 0%, rgba(0, 240, 255, 0.3) 100%);
-  border-color: var(--cyan-primary);
-  border-left: 6px solid var(--cyan-primary);
-  box-shadow: 0 0 20px rgba(0, 240, 255, 0.25);
-}
-
-.menu-btn.disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-  pointer-events: none;
-}
-
-.btn-arrow {
-  font-size: 1.2rem;
-  color: var(--cyan-primary);
-  transition: transform 0.2s ease;
-}
-
-.menu-btn:hover .btn-arrow {
-  transform: translateX(4px);
-}
-
-/* =========================================================================
-   2. TACTICAL IN-GAME HUD (PC SURVIVAL SIMULATOR)
-   ========================================================================= */
-
-.gameplay-hud-root {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-  padding: 24px 32px;
-  pointer-events: none;
-}
-
-/* Top HUD Header */
-.hud-top-bar {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: 20px;
-}
-
-/* Top-Left: Vital Resource Gauges */
-.hud-vitals-panel {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  background: var(--bg-hud);
-  backdrop-filter: blur(12px);
-  border: 1px solid var(--border-hud);
-  border-left: 3px solid var(--cyan-primary);
-  padding: 14px 18px;
-  border-radius: 4px;
-  width: 320px;
-  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.6);
-  pointer-events: auto;
-}
-
-.vital-gauge {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-}
-
-.vital-info-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  font-family: var(--font-display);
-  font-size: 0.78rem;
-  letter-spacing: 1.2px;
-  text-transform: uppercase;
-}
-
-.vital-name {
-  color: var(--text-muted);
-}
-
-.vital-value {
-  font-family: var(--font-mono);
-  font-size: 0.85rem;
-  font-weight: 700;
-  color: #ffffff;
-}
-
-.vital-bar-track {
-  width: 100%;
-  height: 5px;
-  background: rgba(255, 255, 255, 0.1);
-  border-radius: 2px;
-  overflow: hidden;
-}
-
-.vital-bar-fill {
-  height: 100%;
-  border-radius: 2px;
-  transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-.fill-cyan { background: linear-gradient(90deg, #0284c7, #00f0ff); box-shadow: 0 0 8px #00f0ff; }
-.fill-blue { background: linear-gradient(90deg, #1d4ed8, #38bdf8); box-shadow: 0 0 8px #38bdf8; }
-.fill-green { background: linear-gradient(90deg, #047857, #10b981); box-shadow: 0 0 8px #10b981; }
-.fill-yellow { background: linear-gradient(90deg, #b45309, #f59e0b); box-shadow: 0 0 8px #f59e0b; }
-.fill-purple { background: linear-gradient(90deg, #6d28d9, #a855f7); box-shadow: 0 0 8px #a855f7; }
-.fill-red { background: linear-gradient(90deg, #b91c1c, #ef4444); box-shadow: 0 0 8px #ef4444; }
-
-/* Top-Center: Mission Day & Telemetry Indicator */
-.hud-telemetry-center {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 4px;
-}
-
-.hud-day-pill {
-  font-family: var(--font-display);
-  font-size: 0.95rem;
-  font-weight: 800;
-  letter-spacing: 3px;
-  color: #ffffff;
-  background: rgba(15, 23, 42, 0.85);
-  border: 1px solid var(--border-hud);
-  padding: 6px 18px;
-  border-radius: 4px;
-  backdrop-filter: blur(10px);
-  text-transform: uppercase;
-  box-shadow: 0 0 15px rgba(0, 240, 255, 0.2);
-}
-
-.hud-env-stats {
-  font-family: var(--font-mono);
-  font-size: 0.74rem;
-  color: var(--cyan-primary);
-  display: flex;
-  gap: 14px;
-}
-
-/* Top-Right: Mission Objective Checklist */
-.hud-objective-panel {
-  background: var(--bg-hud);
-  backdrop-filter: blur(12px);
-  border: 1px solid var(--border-hud);
-  border-right: 3px solid var(--gold-accent);
-  padding: 14px 18px;
-  border-radius: 4px;
-  width: 320px;
-  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.6);
-  pointer-events: auto;
-}
-
-.hud-obj-header {
-  font-family: var(--font-display);
-  font-size: 0.75rem;
-  font-weight: 700;
-  letter-spacing: 1.5px;
-  color: var(--gold-accent);
-  text-transform: uppercase;
-  margin-bottom: 6px;
-}
-
-.hud-obj-title {
-  font-size: 0.92rem;
-  font-weight: 600;
-  color: #ffffff;
-  margin-bottom: 8px;
-  line-height: 1.4;
-}
-
-.hud-obj-task {
-  font-size: 0.82rem;
-  color: #cbd5e1;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-/* Center Screen Reticle & Interaction Prompt */
-.hud-center-reticle {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 14px;
-  pointer-events: none;
-}
-
-.reticle-dot {
+/* Custom Scrollbars */
+::-webkit-scrollbar {
   width: 6px;
   height: 6px;
-  background: rgba(255, 255, 255, 0.7);
-  border-radius: 50%;
-  box-shadow: 0 0 8px rgba(0, 240, 255, 0.8);
+}
+::-webkit-scrollbar-track {
+  background: #F1F5F9;
+}
+::-webkit-scrollbar-thumb {
+  background: #CBD5E1;
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #94A3B8;
 }
 
-.interaction-prompt-box {
-  background: rgba(6, 11, 25, 0.92);
-  border: 1px solid var(--cyan-primary);
-  padding: 10px 18px;
-  border-radius: 4px;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  box-shadow: 0 0 25px rgba(0, 240, 255, 0.45);
-  animation: pulseGlow 2s infinite alternate ease-in-out;
+/* Status Badges */
+.badge-available {
+  background-color: #ECFDF5;
+  color: #065F46;
+  border: 1px solid #A7F3D0;
 }
 
-.key-badge {
-  font-family: var(--font-display);
-  font-size: 0.85rem;
-  font-weight: 800;
-  color: #030712;
-  background: var(--cyan-primary);
-  padding: 3px 8px;
-  border-radius: 3px;
+.badge-low-stock {
+  background-color: #FFFBEB;
+  color: #92400E;
+  border: 1px solid #FDE68A;
 }
 
-.prompt-text {
-  font-family: var(--font-display);
-  font-size: 0.9rem;
-  letter-spacing: 1.5px;
-  color: #ffffff;
-  text-transform: uppercase;
+.badge-out-of-stock {
+  background-color: #FEF2F2;
+  color: #991B1B;
+  border: 1px solid #FECACA;
 }
 
-/* Bottom HUD Area */
-.hud-bottom-bar {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-end;
+.badge-unconfirmed {
+  background-color: #F8FAFC;
+  color: #475569;
+  border: 1px solid #E2E8F0;
 }
 
-.hud-controls-helper {
-  font-family: var(--font-mono);
-  font-size: 0.74rem;
-  color: var(--text-dim);
-  background: rgba(3, 7, 18, 0.75);
-  padding: 6px 12px;
-  border-radius: 4px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+/* MedBridge Confidence Badges */
+.confidence-confirmed {
+  background: linear-gradient(135deg, #ECFDF5 0%, #D1FAE5 100%);
+  color: #047857;
+  border: 1px solid #6EE7B7;
+  box-shadow: 0 0 10px rgba(16, 185, 129, 0.15);
 }
 
-.hud-radio-transmission {
-  max-width: 550px;
-  background: rgba(9, 14, 33, 0.92);
-  border-left: 3px solid var(--cyan-primary);
-  padding: 12px 18px;
-  border-radius: 4px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.7);
-  animation: slideUp 0.3s var(--ease-out-expo);
+.confidence-recent {
+  background: linear-gradient(135deg, #EFF6FF 0%, #DBEAFE 100%);
+  color: #1D4ED8;
+  border: 1px solid #93C5FD;
 }
 
-.radio-sender {
-  font-family: var(--font-mono);
-  font-size: 0.72rem;
-  letter-spacing: 1.5px;
-  color: var(--cyan-primary);
-  margin-bottom: 4px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
+.confidence-outdated {
+  background: linear-gradient(135deg, #FFFBEB 0%, #FEF3C7 100%);
+  color: #B45309;
+  border: 1px solid #FCD34D;
 }
 
-.radio-text {
-  font-size: 0.88rem;
-  color: #f1f5f9;
-  line-height: 1.45;
-}
-
-/* =========================================================================
-   3. PAUSE MENU & MODAL WINDOWS
-   ========================================================================= */
-
-.modal-backdrop {
-  position: fixed;
-  inset: 0;
-  background: rgba(3, 7, 18, 0.85);
-  backdrop-filter: blur(14px);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 100;
-  pointer-events: auto;
-  animation: fadeIn 0.25s ease;
-}
-
-.pause-panel {
-  width: 440px;
-  background: linear-gradient(180deg, rgba(15, 23, 42, 0.95) 0%, rgba(6, 11, 25, 0.98) 100%);
-  border: 1px solid var(--border-hud);
-  border-top: 3px solid var(--cyan-primary);
-  border-radius: 6px;
-  padding: 32px 36px;
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.9), 0 0 30px rgba(0, 240, 255, 0.2);
-}
-
-.pause-title {
-  font-family: var(--font-display);
-  font-size: 1.6rem;
-  letter-spacing: 4px;
-  color: #ffffff;
-  text-align: center;
-  margin-bottom: 8px;
-  text-transform: uppercase;
-}
-
-.pause-btn {
-  font-family: var(--font-display);
-  font-size: 0.95rem;
-  font-weight: 700;
-  letter-spacing: 2px;
-  color: #cbd5e1;
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  padding: 13px 20px;
-  cursor: pointer;
-  border-radius: 4px;
-  text-align: center;
-  transition: all 0.2s ease;
-  text-transform: uppercase;
-}
-
-.pause-btn:hover {
-  background: rgba(0, 240, 255, 0.15);
-  border-color: var(--cyan-primary);
-  color: #ffffff;
-  box-shadow: 0 0 15px rgba(0, 240, 255, 0.3);
-}
-
-.pause-btn.primary {
-  background: linear-gradient(90deg, #0284c7, #00f0ff);
-  color: #030712;
-  border: none;
-}
-.pause-btn.primary:hover {
-  box-shadow: 0 0 25px rgba(0, 240, 255, 0.6);
-}
-
-/* Station Interaction Engineering Window */
-.station-dialog-card {
-  width: 720px;
-  max-width: 95vw;
-  background: linear-gradient(180deg, rgba(15, 23, 42, 0.98) 0%, rgba(6, 11, 25, 0.98) 100%);
-  border: 1px solid var(--border-hud);
-  border-top: 3px solid var(--cyan-primary);
-  border-radius: 6px;
-  padding: 30px 36px;
-  display: flex;
-  flex-direction: column;
-  gap: 18px;
-  box-shadow: 0 25px 70px rgba(0, 0, 0, 0.95);
-  max-height: 90vh;
-  overflow-y: auto;
-}
-
-.station-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-  padding-bottom: 12px;
-}
-
-.station-title {
-  font-family: var(--font-display);
-  font-size: 1.35rem;
-  letter-spacing: 2px;
-  color: var(--cyan-primary);
-}
-
-.station-category {
-  font-family: var(--font-mono);
-  font-size: 0.72rem;
-  color: var(--gold-accent);
-  text-transform: uppercase;
-  letter-spacing: 1px;
-}
-
-.station-problem-box {
-  background: rgba(0, 0, 0, 0.4);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  padding: 16px;
-  border-radius: 4px;
-  font-size: 0.95rem;
-  line-height: 1.55;
-  color: #e2e8f0;
-}
-
-.station-choices-grid {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.station-choice-card {
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 4px;
-  padding: 14px 18px;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.station-choice-card:hover {
-  background: rgba(0, 240, 255, 0.08);
-  border-color: var(--cyan-primary);
-  box-shadow: 0 0 20px rgba(0, 240, 255, 0.2);
-}
-
-.choice-top-line {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.choice-label {
-  font-family: var(--font-display);
-  font-size: 0.95rem;
-  font-weight: 700;
-  color: #ffffff;
-}
-
-.choice-cost-badge {
-  font-family: var(--font-mono);
-  font-size: 0.75rem;
-  color: var(--red-alert);
-}
-
-.choice-benefit-badge {
-  font-family: var(--font-mono);
-  font-size: 0.75rem;
-  color: var(--green-safe);
-}
-
-/* Science Explainer Banner */
-.science-curriculum-box {
-  background: rgba(168, 85, 247, 0.08);
-  border: 1px solid rgba(168, 85, 247, 0.35);
-  border-left: 3px solid var(--purple-accent);
-  padding: 14px 18px;
-  border-radius: 4px;
-  font-size: 0.88rem;
-  line-height: 1.5;
-  color: #e2e8f0;
-}
-
-.science-curriculum-header {
-  font-family: var(--font-display);
-  font-size: 0.72rem;
-  letter-spacing: 2px;
-  color: var(--purple-accent);
-  text-transform: uppercase;
-  margin-bottom: 4px;
-}
-
-/* Settings Form Controls */
-.settings-group {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-
-.setting-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  font-size: 0.9rem;
-}
-
-.setting-slider {
-  width: 180px;
-  accent-color: var(--cyan-primary);
+.confidence-unverified {
+  background: linear-gradient(135deg, #F1F5F9 0%, #E2E8F0 100%);
+  color: #64748B;
+  border: 1px solid #CBD5E1;
 }
 
 /* Animations */
-@keyframes fadeIn {
-  from { opacity: 0; }
-  to { opacity: 1; }
+@keyframes pulseSubtle {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.85; transform: scale(1.02); }
 }
 
-@keyframes slideUp {
-  from { opacity: 0; transform: translateY(12px); }
+.pulse-badge {
+  animation: pulseSubtle 3s infinite ease-in-out;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(6px); }
   to { opacity: 1; transform: translateY(0); }
 }
 
-@keyframes pulseGlow {
-  0% { box-shadow: 0 0 15px rgba(0, 240, 255, 0.3); }
-  100% { box-shadow: 0 0 30px rgba(0, 240, 255, 0.6); }
+.animate-fade-in {
+  animation: fadeIn 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
-/* Responsive Media Queries */
-@media (max-width: 1024px) {
-  .menu-screen-overlay {
-    flex-direction: column;
-    justify-content: center;
-    gap: 30px;
-    padding: 30px;
-  }
-  .menu-branding-left {
-    margin-bottom: 0;
-  }
-  .menu-game-title {
-    font-size: 3rem;
-  }
-  .hud-vitals-panel, .hud-objective-panel {
-    width: 260px;
-  }
+/* Leaflet Map Customization */
+.leaflet-container {
+  width: 100%;
+  height: 100%;
+  border-radius: 0.75rem;
+  z-index: 10;
+}
+
+.custom-map-popup .leaflet-popup-content-wrapper {
+  padding: 0;
+  border-radius: 0.75rem;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.18);
+  overflow: hidden;
+}
+
+.custom-map-popup .leaflet-popup-content {
+  margin: 0;
+  line-height: 1.4;
+}
+
+/* Medical Disclaimer Banner */
+.medical-disclaimer-bar {
+  background-color: #F8FAFC;
+  border-top: 1px solid #E2E8F0;
+  font-size: 0.75rem;
+  color: #64748B;
+}
+
+/* Modal Overlay */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background-color: rgba(10, 17, 40, 0.65);
+  backdrop-filter: blur(6px);
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
 }
