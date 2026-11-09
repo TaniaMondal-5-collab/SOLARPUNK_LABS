@@ -1,35 +1,19 @@
 // ASTROBASE: Junior Astronaut Mission Trainer
-// Core React Application Implementation
+// Professional PC-Quality 3D Space Simulator & Campaign Manager
 
-(function() {
+(function () {
   const { createElement: h, useState, useEffect, useMemo, useRef } = window.React;
 
-  // Sound helper wrapper
-  const sound = window.astroAudio || {
-    click: () => {},
-    toggle: () => {},
-    success: () => {},
-    warning: () => {},
-    danger: () => {},
-    dayAdvance: () => {},
-    upgrade: () => {},
-    gameComplete: () => {},
-    toggleMute: () => false,
-    isMuted: () => false
-  };
+  const sound = window.astroAudio;
 
   function App() {
-    // Navigation / Screen state
-    const [screen, setScreen] = useState("welcome"); // 'welcome' | 'setup' | 'dashboard' | 'decision' | 'upgrades' | 'results'
-    const [activeTab, setActiveTab] = useState("dashboard"); // 'dashboard' | 'decision' | 'upgrades' | 'crew'
-    
-    // Mission Configuration
-    const [selectedBase, setSelectedBase] = useState(window.GAME_DATA.bases[0]);
-    
-    // Day progression (1 to 10)
+    // Top-level Application State
+    const [screen, setScreen] = useState('menu'); // 'menu' | 'gameplay' | 'paused'
+    const [modal, setModal] = useState(null); // null | 'setup' | 'mission_select' | 'settings' | 'science_log' | 'station' | 'results'
+
+    // Mission Campaign State
     const [day, setDay] = useState(1);
-    
-    // Vital Resources (simplified game units)
+    const [selectedBase, setSelectedBase] = useState(window.GAME_DATA.bases[0]);
     const [resources, setResources] = useState({
       oxygen: 100,
       water: 100,
@@ -38,56 +22,152 @@
       radiation: 80,
       health: 100
     });
-
     const [scienceScore, setScienceScore] = useState(0);
+    const [upgrades, setUpgrades] = useState({});
+    const [decisionsHistory, setDecisionsHistory] = useState([]);
+    const [dayObjectiveCompleted, setDayObjectiveCompleted] = useState(false);
 
-    // Active Base Subsystems (Energy Management)
-    const [subsystems, setSubsystems] = useState({
-      oxygenGen: true,       // 14 energy
-      waterRecycler: true,   // 10 energy
-      hydroponics: true,     // 12 energy
-      thermalRadiators: true,// 8 energy
-      scienceRadar: true,    // 6 energy
-      auxShield: false       // 16 energy
+    // Contextual interaction
+    const [activeStation, setActiveStation] = useState(null);
+    const [radioMessage, setRadioMessage] = useState({
+      sender: "HOUSTON FLIGHT DYNAMICS",
+      text: "Astrobase telemetry online. All 4 crew members accounted for on lunar surface."
     });
 
-    // Installed Upgrades { upgrade_id: level (1 or 2) }
-    const [upgrades, setUpgrades] = useState({});
+    // Settings
+    const [settings, setSettings] = useState({
+      masterVolume: 80,
+      sfxVolume: 80,
+      ambientVolume: 40,
+      mouseSensitivity: 1.0,
+      cameraMode: 'third_person',
+      graphicsQuality: 'high'
+    });
 
-    // Decisions Tracking
-    const [decisionsHistory, setDecisionsHistory] = useState([]);
-    const [scenarioResolvedToday, setScenarioResolvedToday] = useState(false);
-    const [recentChoiceResult, setRecentChoiceResult] = useState(null);
+    // Save Game state
+    const [hasSaveGame, setHasSaveGame] = useState(false);
 
-    // Modals
-    const [tutorialOpen, setTutorialOpen] = useState(false);
-    const [scienceLogOpen, setScienceLogOpen] = useState(false);
-    const [dailyReportModal, setDailyReportModal] = useState(null);
+    // 3D Engine Reference
+    const astro3dRef = useRef(null);
 
-    // Alerts / Telemetry Feed
-    const [alerts, setAlerts] = useState([
-      { id: 1, text: "Mission clock initialized. Base systems nominal at lunar dawn.", type: "info", day: 1 }
-    ]);
+    // Initialize 3D Engine on mount
+    useEffect(() => {
+      // Check for existing save
+      const saved = localStorage.getItem('astrobase_save_v2');
+      if (saved) {
+        setHasSaveGame(true);
+      }
 
-    // Audio Mute state
-    const [isMuted, setIsMuted] = useState(sound.isMuted());
+      if (!astro3dRef.current && window.Astrobase3D) {
+        const engine = new window.Astrobase3D(
+          'canvas-3d',
+          (station) => {
+            // Callback when pressing E near a station
+            handleOpenStationInteraction(station);
+          },
+          (hudData) => {
+            setActiveStation(hudData.activeStation);
+          }
+        );
+        astro3dRef.current = engine;
+        window.astro3d = engine;
+      }
 
-    const toggleAudio = () => {
-      const state = sound.toggleMute();
-      setIsMuted(state);
+      // Sync settings with audio
+      sound.setMasterVolume(settings.masterVolume / 100);
+      sound.setSfxVolume(settings.sfxVolume / 100);
+      sound.setAmbientVolume(settings.ambientVolume / 100);
+    }, []);
+
+    // Synchronize 3D engine mode
+    useEffect(() => {
+      if (astro3dRef.current) {
+        astro3dRef.current.setMode(screen);
+        astro3dRef.current.setDay(day);
+      }
+    }, [screen, day]);
+
+    // Passive EVA life-support consumption during gameplay
+    useEffect(() => {
+      if (screen !== 'gameplay') return;
+
+      const timer = setInterval(() => {
+        setResources(prev => {
+          // Slow continuous oxygen and energy drain during EVA
+          const next = { ...prev };
+          next.oxygen = Math.max(0, +(next.oxygen - 0.15).toFixed(1));
+          next.energy = Math.max(0, +(next.energy - 0.10).toFixed(1));
+
+          // Oxygen warning
+          if (next.oxygen <= 0) {
+            next.health = Math.max(0, next.health - 2);
+            triggerRadioMessage("SUIT TELEMETRY", "CRITICAL WARNING: PLSS OXYGEN SUPPLY EXHAUSTED! Return to airlock!");
+          } else if (next.oxygen <= 20 && Math.random() < 0.2) {
+            triggerRadioMessage("SUIT TELEMETRY", "WARNING: Oxygen reserves below 20%. Conserve respiration.");
+            sound.warning();
+          }
+
+          if (next.health <= 0) {
+            sound.danger();
+            setScreen('paused');
+            setModal('results');
+          }
+
+          return next;
+        });
+      }, 3000);
+
+      return () => clearInterval(timer);
+    }, [screen]);
+
+    const triggerRadioMessage = (sender, text) => {
+      sound.quindarTone();
+      setRadioMessage({ sender, text });
     };
 
-    // Add alert helper
-    const addAlert = (text, type = "info") => {
-      setAlerts(prev => [
-        { id: Date.now() + Math.random(), text, type, day },
-        ...prev.slice(0, 19)
-      ]);
-    };
-
-    // Reset whole game
-    const handleStartNewMission = (base = window.GAME_DATA.bases[0]) => {
+    // Save Game to LocalStorage
+    const handleSaveGame = () => {
+      const saveData = {
+        day,
+        selectedBase,
+        resources,
+        scienceScore,
+        upgrades,
+        decisionsHistory,
+        timestamp: Date.now()
+      };
+      localStorage.setItem('astrobase_save_v2', JSON.stringify(saveData));
+      setHasSaveGame(true);
       sound.success();
+      triggerRadioMessage("SYSTEM NOTIFICATION", `Mission state saved locally for Day ${day}.`);
+    };
+
+    // Resume Saved Game
+    const handleResumeMission = () => {
+      const raw = localStorage.getItem('astrobase_save_v2');
+      if (!raw) return;
+      try {
+        const data = JSON.parse(raw);
+        setDay(data.day || 1);
+        setSelectedBase(data.selectedBase || window.GAME_DATA.bases[0]);
+        setResources(data.resources || { oxygen: 100, water: 100, food: 100, energy: 100, radiation: 80, health: 100 });
+        setScienceScore(data.scienceScore || 0);
+        setUpgrades(data.upgrades || {});
+        setDecisionsHistory(data.decisionsHistory || []);
+        setDayObjectiveCompleted(false);
+
+        sound.success();
+        setScreen('gameplay');
+        setModal(null);
+        triggerRadioMessage("HOUSTON FLIGHT CONTROL", `Welcome back, Commander. Resuming Day ${data.day} lunar operations.`);
+      } catch (e) {
+        console.error("Save load error:", e);
+      }
+    };
+
+    // Launch Brand New Campaign
+    const handleLaunchNewGame = (base) => {
+      sound.dayAdvance();
       setSelectedBase(base);
       setDay(1);
       setResources({
@@ -99,79 +179,32 @@
         health: 100
       });
       setScienceScore(0);
-      setSubsystems({
-        oxygenGen: true,
-        waterRecycler: true,
-        hydroponics: true,
-        thermalRadiators: true,
-        scienceRadar: true,
-        auxShield: false
-      });
       setUpgrades({});
       setDecisionsHistory([]);
-      setScenarioResolvedToday(false);
-      setRecentChoiceResult(null);
-      setDailyReportModal(null);
-      setAlerts([
-        { id: 1, text: `Expedition 1 landed at ${base.name}. 10-day mission underway!`, type: "success", day: 1 }
-      ]);
-      setScreen("dashboard");
-      setActiveTab("dashboard");
+      setDayObjectiveCompleted(false);
+
+      setScreen('gameplay');
+      setModal(null);
+      triggerRadioMessage("HOUSTON COMMAND", `Touchdown confirmed at ${base.name}. 10-day lunar expedition begins. Check active objective.`);
     };
 
-    // Subsystem toggle
-    const handleToggleSubsystem = (key) => {
-      sound.toggle();
-      setSubsystems(prev => {
-        const next = { ...prev, [key]: !prev[key] };
-        addAlert(`Subsystem ${key} switched ${next[key] ? 'ONLINE' : 'OFFLINE'}.`, next[key] ? 'info' : 'warn');
-        return next;
-      });
+    // Handle pressing E at interactive station
+    const handleOpenStationInteraction = (station) => {
+      sound.interact();
+      setModal('station');
+      if (document.pointerLockElement) {
+        document.exitPointerLock().catch(() => {});
+      }
     };
 
-    // Calculate dynamic daily energy budget
-    const energyCalculations = useMemo(() => {
-      let solarEfficiency = 1.0;
-      if (day > 1 && !upgrades.solar_upgrade) {
-        solarEfficiency = Math.max(0.65, 1.0 - (day - 1) * 0.04);
-      }
-      
-      let baseGen = 45;
-      if (selectedBase.energyBonus) {
-        baseGen *= (1 + selectedBase.energyBonus);
-      }
-      
-      if (upgrades.solar_upgrade === 1) baseGen += 12;
-      if (upgrades.solar_upgrade === 2) {
-        baseGen += 24;
-        solarEfficiency = 1.0; // dust immune
-      }
+    // Current Scenario
+    const currentScenario = useMemo(() => {
+      return window.GAME_DATA.scenarios.find(s => s.day === day) || window.GAME_DATA.scenarios[0];
+    }, [day]);
 
-      const totalGeneration = Math.round(baseGen * solarEfficiency);
-
-      // Active drain
-      let totalDrain = 0;
-      if (subsystems.oxygenGen) totalDrain += 14;
-      if (subsystems.waterRecycler) totalDrain += 10;
-      if (subsystems.hydroponics) totalDrain += 12;
-      if (subsystems.thermalRadiators) totalDrain += 8;
-      if (subsystems.scienceRadar) totalDrain += 6;
-      if (subsystems.auxShield) totalDrain += 16;
-
-      return {
-        generation: totalGeneration,
-        drain: totalDrain,
-        net: totalGeneration - totalDrain,
-        efficiency: Math.round(solarEfficiency * 100)
-      };
-    }, [day, selectedBase, upgrades, subsystems]);
-
-    // Handle Decision Selection
-    const handleMakeDecision = (choice) => {
-      sound.click();
-      const currentScenario = window.GAME_DATA.scenarios.find(s => s.day === day) || window.GAME_DATA.scenarios[0];
-      
-      // Compute new resources ensuring no drops below 0
+    // Handle Player Decision at Station
+    const handleExecuteDecision = (choice) => {
+      sound.success();
       setResources(prev => {
         const next = { ...prev };
         if (choice.delta.oxygen) next.oxygen = Math.max(0, Math.min(100, next.oxygen + choice.delta.oxygen));
@@ -187,12 +220,6 @@
         setScienceScore(s => s + choice.delta.science);
       }
 
-      setScenarioResolvedToday(true);
-      setRecentChoiceResult({
-        choice,
-        scenario: currentScenario
-      });
-
       setDecisionsHistory(prev => [
         ...prev,
         {
@@ -200,1291 +227,572 @@
           scenarioTitle: currentScenario.title,
           chosenLabel: choice.label,
           feedback: choice.feedback,
-          scienceFact: choice.scienceFact,
-          delta: choice.delta
+          scienceFact: choice.scienceFact
         }
       ]);
 
-      addAlert(`Engineering Decision Logged: "${choice.label}".`, "info");
-      sound.success();
+      setDayObjectiveCompleted(true);
+      setModal(null);
+      triggerRadioMessage("HOUSTON FLIGHT CONTROL", choice.feedback);
     };
 
-    // Advance to Next Day
+    // Advance Campaign to Next Day
     const handleAdvanceDay = () => {
+      sound.dayAdvance();
       if (day >= 10) {
         sound.gameComplete();
-        setScreen("results");
+        setScreen('paused');
+        setModal('results');
         return;
-      }
-
-      sound.dayAdvance();
-
-      // Run daily simulation calculations
-      const report = {
-        prevDay: day,
-        nextDay: day + 1,
-        o2Consumed: 0,
-        waterConsumed: 0,
-        foodNet: 0,
-        energyNet: energyCalculations.net,
-        radiationDecay: 0,
-        healthChange: 0,
-        warnings: []
-      };
-
-      setResources(prev => {
-        const next = { ...prev };
-
-        // 1. Oxygen consumption
-        let o2Burn = 15;
-        if (!subsystems.oxygenGen) {
-          o2Burn = 25; // no active recycling, burns backup tanks
-          report.warnings.push("O2 Generator offline! Depleted backup oxygen reserves.");
-        }
-        if (upgrades.moxie_upgrade === 1) o2Burn -= 6;
-        if (upgrades.moxie_upgrade === 2) o2Burn -= 12;
-        if (upgrades.hydro_upgrade === 1) o2Burn -= 3;
-        if (upgrades.hydro_upgrade === 2) o2Burn -= 6;
-        o2Burn = Math.max(4, o2Burn);
-        report.o2Consumed = o2Burn;
-        next.oxygen = Math.max(0, next.oxygen - o2Burn);
-
-        // 2. Water consumption
-        let waterBurn = 16;
-        if (!subsystems.waterRecycler) {
-          waterBurn = 26;
-          report.warnings.push("Water Recycler offline! Burning clean reserve tanks.");
-        }
-        if (selectedBase.waterDiscount) {
-          waterBurn = Math.round(waterBurn * (1 - selectedBase.waterDiscount));
-        }
-        if (upgrades.water_upgrade === 1) waterBurn -= 5;
-        if (upgrades.water_upgrade === 2) waterBurn -= 10;
-        waterBurn = Math.max(4, waterBurn);
-        report.waterConsumed = waterBurn;
-        next.water = Math.max(0, next.water - waterBurn);
-
-        // 3. Food consumption & Greenhouse production
-        const foodEaten = 14;
-        let foodProduced = 0;
-        if (subsystems.hydroponics) {
-          foodProduced = 9; // base + botanist trait
-          if (upgrades.hydro_upgrade === 1) foodProduced += 10;
-          if (upgrades.hydro_upgrade === 2) foodProduced += 20;
-        } else {
-          report.warnings.push("Hydroponic Greenhouse unpowered! Zero fresh crops harvested.");
-        }
-        const foodNet = foodProduced - foodEaten;
-        report.foodNet = foodNet;
-        next.food = Math.max(0, Math.min(100, next.food + foodNet));
-
-        // 4. Energy net
-        next.energy = Math.max(0, Math.min(100, next.energy + energyCalculations.net));
-        if (next.energy <= 0) {
-          report.warnings.push("ELECTRICAL BROWNOUT! Base battery banks fully drained.");
-        }
-
-        // 5. Radiation shield natural degradation & cosmic rays
-        let radDecay = 4;
-        if (selectedBase.radiationBonus) radDecay = Math.max(1, radDecay - 2);
-        if (upgrades.shield_upgrade === 1) radDecay = Math.max(1, radDecay - 2);
-        if (upgrades.shield_upgrade === 2) radDecay = 0; // complete basalt dome
-        if (subsystems.auxShield) radDecay = 0;
-        report.radiationDecay = radDecay;
-        next.radiation = Math.max(0, next.radiation - radDecay);
-
-        // 6. Crew Health impact checks
-        let healthDelta = 0;
-
-        if (next.oxygen <= 0) {
-          healthDelta -= 24;
-          report.warnings.push("CRITICAL HYPOXIA! Zero oxygen in habitat atmosphere.");
-        }
-        if (next.water <= 0) {
-          healthDelta -= 18;
-          report.warnings.push("ACUTE DEHYDRATION! Potable water exhausted.");
-        }
-        if (next.food <= 0) {
-          healthDelta -= 12;
-          report.warnings.push("STARVATION HAZARD! Food rations depleted.");
-        }
-        if (next.energy <= 0) {
-          healthDelta -= 10;
-          report.warnings.push("ENVIRONMENTAL FREEZE! Thermal radiators failed.");
-        }
-        if (next.radiation < 20) {
-          healthDelta -= 8;
-          report.warnings.push("HIGH RADIATION DOSE! Space radiation penetrating habitat.");
-        }
-
-        // Natural recovery if all nominal
-        if (healthDelta === 0 && next.oxygen > 30 && next.water > 30 && next.food > 30 && next.energy > 30 && next.health < 100) {
-          healthDelta += 5; // Commander Chen morale boost
-        }
-
-        report.healthChange = healthDelta;
-        next.health = Math.max(0, Math.min(100, next.health + healthDelta));
-
-        return next;
-      });
-
-      // Passive science gain from active radar
-      if (subsystems.scienceRadar) {
-        setScienceScore(s => s + 3);
       }
 
       const nextDay = day + 1;
       setDay(nextDay);
-      setScenarioResolvedToday(false);
-      setRecentChoiceResult(null);
-      setDailyReportModal(report);
-      setActiveTab("dashboard");
+      setDayObjectiveCompleted(false);
 
-      addAlert(`Day ${nextDay} initiated. Solar angle adjusted.`, "info");
-      if (report.warnings.length > 0) {
-        report.warnings.forEach(w => addAlert(w, "crit"));
-        sound.warning();
-      }
-    };
-
-    // Purchase an Upgrade
-    const handleBuyUpgrade = (upgradeId, targetLevel) => {
-      sound.click();
-      const upDef = window.GAME_DATA.upgrades.find(u => u.id === upgradeId);
-      if (!upDef) return;
-      const levelDef = upDef.levels.find(l => l.level === targetLevel);
-      if (!levelDef) return;
-
-      // Check costs
-      const cost = levelDef.cost;
-      const canAfford = 
-        (!cost.energy || resources.energy >= cost.energy) &&
-        (!cost.water || resources.water >= cost.water) &&
-        (!cost.food || resources.food >= cost.food);
-
-      if (!canAfford) {
-        sound.danger();
-        addAlert("Insufficient resources for this engineering upgrade!", "warn");
-        return;
-      }
-
-      // Deduct resources
+      // Night / Day turn calculations
       setResources(prev => ({
         ...prev,
-        energy: cost.energy ? prev.energy - cost.energy : prev.energy,
-        water: cost.water ? prev.water - cost.water : prev.water,
-        food: cost.food ? prev.food - cost.food : prev.food,
-        radiation: levelDef.bonus.radiationBoost ? Math.min(100, prev.radiation + levelDef.bonus.radiationBoost) : prev.radiation
+        water: Math.max(0, prev.water - 8),
+        food: Math.max(0, prev.food - 6),
+        energy: Math.min(100, prev.energy + 20),
+        radiation: Math.max(0, prev.radiation - 3)
       }));
 
-      setUpgrades(prev => ({ ...prev, [upgradeId]: targetLevel }));
-      sound.upgrade();
-      addAlert(`Base Upgrade Completed: ${upDef.name} (Level ${targetLevel})!`, "success");
+      triggerRadioMessage("HOUSTON COMMAND", `Day ${nextDay} initialized. Sun elevation shifting. Check revised mission objective.`);
     };
 
-    // Check if player died during day simulation
-    useEffect(() => {
-      if (screen === "dashboard" && resources.health <= 0) {
-        sound.danger();
-        setScreen("results");
+    // Fullscreen toggle
+    const toggleFullscreen = () => {
+      if (!document.fullscreenElement) {
+        document.documentElement.requestFullscreen().catch(() => {});
+      } else {
+        document.exitFullscreen().catch(() => {});
       }
-    }, [resources.health, screen]);
+    };
 
-    // Active scenario definition
-    const activeScenario = useMemo(() => {
-      return window.GAME_DATA.scenarios.find(s => s.day === day) || window.GAME_DATA.scenarios[0];
-    }, [day]);
-
-    // Calculate final mission score & achievements for Screen 6
-    const missionEvaluation = useMemo(() => {
-      const daysSurvived = Math.min(10, day);
-      const isAlive = resources.health > 0;
-      
-      const survivalPts = daysSurvived * 3; // up to 30
-      const healthPts = Math.round(resources.health * 0.25); // up to 25
-      const avgResources = Math.round((resources.oxygen + resources.water + resources.food + resources.energy + resources.radiation) / 5);
-      const resourcePts = Math.round(avgResources * 0.20); // up to 20
-      const sciencePts = Math.min(15, Math.round((scienceScore / 40) * 15)); // up to 15
-      const totalUpgradesCount = Object.keys(upgrades).length;
-      const upgradePts = Math.min(10, totalUpgradesCount * 2); // up to 10
-
-      let finalScore = survivalPts + healthPts + resourcePts + sciencePts + upgradePts;
-      if (!isAlive) finalScore = Math.min(45, Math.round(finalScore * 0.5));
-      finalScore = Math.max(0, Math.min(100, finalScore));
-
-      let rank = "Distinguished Commander";
-      let status = "Full Mission Success";
-      let badge = "🏆 Artemis Master Certification";
-      let color = "var(--cyan-glow)";
-
-      if (!isAlive || finalScore < 50) {
-        rank = "Mission Aborted";
-        status = "Base Evacuated / Catastrophic Failure";
-        badge = "⚠️ Emergency Capsule Return";
-        color = "var(--red-alert)";
-      } else if (finalScore < 70) {
-        rank = "Junior Commander";
-        status = "Marginal Survival";
-        badge = "🥉 Bronze Mission Ribbon";
-        color = "var(--yellow-warn)";
-      } else if (finalScore < 85) {
-        rank = "Senior Station Commander";
-        status = "Mission Success";
-        badge = "🥈 Silver Exploration Award";
-        color = "var(--purple-neon)";
-      }
-
-      // Check achievements
-      const stateObj = {
-        day,
-        health: resources.health,
-        water: resources.water,
-        energy: resources.energy,
-        food: resources.food,
-        scienceScore,
-        upgrades
-      };
-
-      const unlockedAchievements = window.GAME_DATA.achievements.filter(ach => ach.check(stateObj));
-
-      return {
-        score: finalScore,
-        rank,
-        status,
-        badge,
-        color,
-        isAlive,
-        daysSurvived,
-        survivalPts,
-        healthPts,
-        resourcePts,
-        sciencePts,
-        upgradePts,
-        unlockedAchievements
-      };
-    }, [day, resources, scienceScore, upgrades]);
-
-    return h("div", { className: "app-container" },
-      // Top Navigation Header
-      h(TopHeader, {
-        screen,
-        setScreen,
-        day,
-        isMuted,
-        toggleAudio,
-        onOpenTutorial: () => { sound.click(); setTutorialOpen(true); },
-        onOpenScienceLog: () => { sound.click(); setScienceLogOpen(true); },
-        onRestartMission: () => {
+    return h('div', { className: 'interactive-ui' },
+      // 1. MAIN MENU SCREEN
+      screen === 'menu' && h(MainMenuScreen, {
+        hasSaveGame,
+        onResume: handleResumeMission,
+        onNewGame: () => { sound.click(); setModal('setup'); },
+        onMissionSelect: () => { sound.click(); setModal('mission_select'); },
+        onSettings: () => { sound.click(); setModal('settings'); },
+        onScienceLog: () => { sound.click(); setModal('science_log'); },
+        onExit: () => {
           sound.click();
-          if (confirm("Abort current mission and return to base selection?")) {
-            setScreen("setup");
+          if (confirm("Reset current mission parameters?")) {
+            localStorage.removeItem('astrobase_save_v2');
+            setHasSaveGame(false);
           }
         }
       }),
 
-      // Screen Router
-      screen === "welcome" && h(ScreenWelcome, {
-        onStart: () => { sound.click(); setScreen("setup"); },
-        onHowToPlay: () => { sound.click(); setTutorialOpen(true); }
+      // 2. IN-GAME HUD
+      screen === 'gameplay' && h(GameplayHUD, {
+        day,
+        resources,
+        currentScenario,
+        dayObjectiveCompleted,
+        activeStation,
+        radioMessage,
+        onAdvanceDay: handleAdvanceDay,
+        onOpenPause: () => { sound.click(); setScreen('paused'); }
       }),
 
-      screen === "setup" && h(ScreenSetup, {
+      // 3. PAUSE MENU (ESC)
+      screen === 'paused' && !modal && h(PauseMenuModal, {
+        onResume: () => { sound.click(); setScreen('gameplay'); },
+        onObjectives: () => { sound.click(); setModal('objectives'); },
+        onScienceLog: () => { sound.click(); setModal('science_log'); },
+        onSettings: () => { sound.click(); setModal('settings'); },
+        onSave: handleSaveGame,
+        onMainMenu: () => { sound.click(); setScreen('menu'); }
+      }),
+
+      // 4. MODALS
+      modal === 'setup' && h(MissionSetupModal, {
         bases: window.GAME_DATA.bases,
         crew: window.GAME_DATA.crew,
-        selectedBase,
-        setSelectedBase: (b) => { sound.click(); setSelectedBase(b); },
-        onLaunch: () => handleStartNewMission(selectedBase),
-        onBack: () => { sound.click(); setScreen("welcome"); }
+        onLaunch: handleLaunchNewGame,
+        onClose: () => { sound.click(); setModal(null); }
       }),
 
-      screen === "dashboard" && h(ScreenDashboard, {
-        day,
-        resources,
-        selectedBase,
-        subsystems,
-        onToggleSubsystem: handleToggleSubsystem,
-        energyCalculations,
-        upgrades,
-        onBuyUpgrade: handleBuyUpgrade,
-        alerts,
-        activeTab,
-        setActiveTab: (t) => { sound.click(); setActiveTab(t); },
-        scenarioResolvedToday,
-        activeScenario,
-        onOpenDecision: () => { sound.click(); setScreen("decision"); },
-        onAdvanceDay: handleAdvanceDay,
-        scienceScore
+      modal === 'mission_select' && h(MissionSelectModal, {
+        scenarios: window.GAME_DATA.scenarios,
+        currentDay: day,
+        onSelectDay: (dNum) => {
+          sound.click();
+          setDay(dNum);
+          setDayObjectiveCompleted(false);
+          setScreen('gameplay');
+          setModal(null);
+          triggerRadioMessage("HOUSTON COMMAND", `Simulating Day ${dNum}: ${window.GAME_DATA.scenarios[dNum - 1].title}`);
+        },
+        onClose: () => { sound.click(); setModal(null); }
       }),
 
-      screen === "decision" && h(ScreenDecision, {
-        day,
-        scenario: activeScenario,
-        scenarioResolvedToday,
-        recentChoiceResult,
-        onMakeChoice: handleMakeDecision,
-        onBackToDashboard: () => { sound.click(); setScreen("dashboard"); },
-        onAdvanceDay: handleAdvanceDay
+      modal === 'settings' && h(SettingsModal, {
+        settings,
+        setSettings: (s) => {
+          setSettings(s);
+          sound.setMasterVolume(s.masterVolume / 100);
+          sound.setSfxVolume(s.sfxVolume / 100);
+          sound.setAmbientVolume(s.ambientVolume / 100);
+          if (astro3dRef.current) {
+            astro3dRef.current.mouseSensitivity = s.mouseSensitivity;
+          }
+        },
+        onToggleFullscreen: toggleFullscreen,
+        onClose: () => { sound.click(); setModal(null); }
       }),
 
-      screen === "upgrades" && h(ScreenUpgrades, {
-        resources,
-        upgrades,
-        upgradeDefs: window.GAME_DATA.upgrades,
-        onBuyUpgrade: handleBuyUpgrade,
-        onBackToDashboard: () => { sound.click(); setScreen("dashboard"); }
-      }),
-
-      screen === "results" && h(ScreenResults, {
-        evaluation: missionEvaluation,
+      modal === 'science_log' && h(ScienceLogModal, {
         decisionsHistory,
+        onClose: () => { sound.click(); setModal(null); }
+      }),
+
+      modal === 'station' && h(StationInteractionModal, {
+        station: activeStation,
+        scenario: currentScenario,
+        day,
+        onExecuteChoice: handleExecuteDecision,
+        onClose: () => { sound.click(); setModal(null); }
+      }),
+
+      modal === 'results' && h(MissionResultsModal, {
+        day,
         resources,
         scienceScore,
-        selectedBase,
-        onPlayAgain: () => { sound.click(); setScreen("setup"); }
-      }),
-
-      // Interactive Modals
-      tutorialOpen && h(ModalTutorial, {
-        onClose: () => { sound.click(); setTutorialOpen(false); }
-      }),
-
-      scienceLogOpen && h(ModalScienceLog, {
         decisionsHistory,
-        onClose: () => { sound.click(); setScienceLogOpen(false); }
-      }),
-
-      dailyReportModal && h(ModalDailyReport, {
-        report: dailyReportModal,
-        onClose: () => { sound.click(); setDailyReportModal(null); }
-      })
-    );
-  }
-
-  // TOP HEADER COMPONENT
-  function TopHeader(props) {
-    const { screen, setScreen, day, isMuted, toggleAudio, onOpenTutorial, onOpenScienceLog, onRestartMission } = props;
-
-    return h("header", { className: "top-header" },
-      h("div", { className: "brand-wrapper", onClick: () => { sound.click(); if (screen !== "dashboard") setScreen("welcome"); }, style: { cursor: "pointer" } },
-        h("div", { className: "brand-logo-gem" }, "🚀"),
-        h("div", null,
-          h("div", { className: "brand-title" }, "ASTROBASE"),
-          h("div", { className: "brand-sub" }, "Junior Astronaut Mission Trainer")
-        )
-      ),
-
-      h("div", { className: "header-actions" },
-        screen !== "welcome" && screen !== "setup" && h("div", { className: "chip chip-cyan", style: { marginRight: 6 } },
-          `MISSION DAY ${day} OF 10`
-        ),
-
-        h("button", {
-          className: "btn btn-ghost btn-sm",
-          onClick: toggleAudio,
-          title: isMuted ? "Unmute Sound" : "Mute Sound"
-        }, isMuted ? "🔇 Audio OFF" : "🔊 Audio ON"),
-
-        h("button", {
-          className: "btn btn-ghost btn-sm",
-          onClick: onOpenTutorial,
-          title: "How to Play Guide"
-        }, "📖 Tutorial"),
-
-        h("button", {
-          className: "btn btn-ghost btn-sm",
-          onClick: onOpenScienceLog,
-          title: "Science Notes & Concepts"
-        }, "🧪 Science Log"),
-
-        (screen === "dashboard" || screen === "decision" || screen === "upgrades") && h("button", {
-          className: "btn btn-danger btn-sm",
-          onClick: onRestartMission,
-          title: "Abort and Restart Mission"
-        }, "Abort")
-      )
-    );
-  }
-
-  // SCREEN 1: WELCOME PAGE
-  function ScreenWelcome(props) {
-    const { onStart, onHowToPlay } = props;
-
-    return h("div", { className: "setup-container" },
-      h("div", { className: "hud-card", style: { textAlign: "center", padding: "40px 24px", position: "relative" } },
-        h("div", { className: "chip chip-purple", style: { marginBottom: 14 } }, "OFFICIAL SIMULATION TRAINING MODULE"),
-        h("h1", { 
-          style: { 
-            fontFamily: "var(--font-display)", 
-            fontSize: "2.6rem", 
-            letterSpacing: "3px", 
-            fontWeight: 800,
-            background: "linear-gradient(90deg, #ffffff 0%, #38bdf8 50%, #c084fc 100%)",
-            WebkitBackgroundClip: "text",
-            WebkitTextFillColor: "transparent",
-            marginBottom: 8
-          } 
-        }, "ASTROBASE"),
-        h("h3", { 
-          style: { 
-            fontFamily: "var(--font-display)", 
-            fontSize: "1.15rem", 
-            letterSpacing: "2px", 
-            color: "var(--cyan-glow)", 
-            marginBottom: 20, 
-            fontWeight: 600 
-          } 
-        }, "JUNIOR ASTRONAUT MISSION TRAINER"),
-        h("p", { 
-          style: { 
-            fontSize: "1.2rem", 
-            fontStyle: "italic", 
-            color: "#e2e8f0", 
-            marginBottom: 24, 
-            maxWidth: 680, 
-            marginLeft: "auto", 
-            marginRight: "auto" 
-          } 
-        }, "“Think like an engineer. Decide like a commander. Survive like an astronaut.”"),
-        
-        h("p", { 
-          style: { 
-            maxWidth: 720, 
-            margin: "0 auto 30px", 
-            color: "var(--text-muted)", 
-            fontSize: "1rem", 
-            lineHeight: 1.6 
-          } 
-        }, "Welcome, Cadet! You have been appointed Flight Commander of humanity's lunar surface outpost. Over the next 10 mission days, you must manage vital life-support systems, balance the power grid, safeguard 4 specialist astronauts against cosmic radiation and extreme temperature swings, and resolve critical real-world engineering dilemmas."),
-
-        h("div", { style: { display: "flex", gap: 16, justifyContent: "center", flexWrap: "wrap" } },
-          h("button", { className: "btn btn-cyan btn-lg", onClick: onStart }, "🚀 START MISSION"),
-          h("button", { className: "btn btn-outline-cyan btn-lg", onClick: onHowToPlay }, "📖 HOW TO PLAY")
-        )
-      ),
-
-      // Learning Objectives Section
-      h("div", { className: "hud-card" },
-        h("div", { className: "hud-card-header" },
-          h("span", { className: "card-title" }, "🎓 Mission Learning Objectives & Curriculum Standards")
-        ),
-        h("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 16 } },
-          h("div", { style: { background: "rgba(0,0,0,0.3)", padding: 14, borderRadius: "var(--radius-sm)", borderLeft: "3px solid var(--cyan-glow)" } },
-            h("h4", { style: { fontFamily: "var(--font-display)", fontSize: "0.9rem", color: "var(--cyan-glow)", marginBottom: 6 } }, "1. Systems Thinking & ECLSS"),
-            h("p", { style: { fontSize: "0.85rem", color: "var(--text-muted)" } }, "Understand how Closed-Loop Environmental Control and Life Support Systems balance oxygen consumption, water recycling, and metabolic waste reclamation in space.")
-          ),
-          h("div", { style: { background: "rgba(0,0,0,0.3)", padding: 14, borderRadius: "var(--radius-sm)", borderLeft: "3px solid var(--purple-glow)" } },
-            h("h4", { style: { fontFamily: "var(--font-display)", fontSize: "0.9rem", color: "var(--purple-neon)", marginBottom: 6 } }, "2. In-Situ Resource Utilization (ISRU)"),
-            h("p", { style: { fontSize: "0.85rem", color: "var(--text-muted)" } }, "Explore extracting water ice from cold permanently shadowed craters, and chemically cracking breathable oxygen directly from lunar regolith minerals.")
-          ),
-          h("div", { style: { background: "rgba(0,0,0,0.3)", padding: 14, borderRadius: "var(--radius-sm)", borderLeft: "3px solid var(--yellow-warn)" } },
-            h("h4", { style: { fontFamily: "var(--font-display)", fontSize: "0.9rem", color: "var(--yellow-warn)", marginBottom: 6 } }, "3. Space Physics & Radiation Shielding"),
-            h("p", { style: { fontSize: "0.85rem", color: "var(--text-muted)" } }, "Learn how galactic cosmic rays, solar flares, electrostatic dust levitation, and thermal swings (-130°C to +120°C) impact lunar habitats without an atmosphere.")
-          ),
-          h("div", { style: { background: "rgba(0,0,0,0.3)", padding: 14, borderRadius: "var(--radius-sm)", borderLeft: "3px solid var(--green-safe)" } },
-            h("h4", { style: { fontFamily: "var(--font-display)", fontSize: "0.9rem", color: "var(--green-safe)", marginBottom: 6 } }, "4. Real Engineering Trade-offs"),
-            h("p", { style: { fontSize: "0.85rem", color: "var(--text-muted)" } }, "Make balanced decisions where every choice has physical consequences—balancing power generation, crew fatigue, thermal safety, and scientific yield.")
-          )
-        )
-      )
-    );
-  }
-
-  // SCREEN 2: MISSION SETUP
-  function ScreenSetup(props) {
-    const { bases, crew, selectedBase, setSelectedBase, onLaunch, onBack } = props;
-
-    return h("div", { className: "setup-container" },
-      h("div", { className: "hud-card" },
-        h("div", { className: "hud-card-header" },
-          h("span", { className: "card-title" }, "📍 Step 1: Select Lunar Research Base Site"),
-          h("span", { className: "chip chip-cyan" }, "10-DAY EXPEDITION")
-        ),
-        h("div", { className: "bases-selection-grid" },
-          bases.map(b => {
-            const isSel = selectedBase.id === b.id;
-            return h("div", {
-              key: b.id,
-              className: `base-select-card ${isSel ? 'selected' : ''}`,
-              onClick: () => setSelectedBase(b)
-            },
-              h("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "flex-start" } },
-                h("div", null,
-                  h("h3", { style: { fontFamily: "var(--font-display)", fontSize: "1rem", color: isSel ? "var(--cyan-glow)" : "#fff" } }, b.name),
-                  h("div", { style: { fontSize: "0.74rem", color: "var(--cyan-subtle)", fontFamily: "var(--font-mono)" } }, b.location)
-                ),
-                h("span", { className: "chip chip-purple" }, b.badge)
-              ),
-              h("p", { style: { fontSize: "0.85rem", color: "var(--text-muted)" } }, b.description),
-              h("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 4 } },
-                h("span", { style: { fontSize: "0.8rem", color: "var(--green-safe)", fontWeight: 600 } }, b.bonusText),
-                h("span", { style: { fontSize: "0.72rem", color: "var(--text-dim)" } }, b.difficulty)
-              )
-            );
-          })
-        )
-      ),
-
-      // Crew Specialists
-      h("div", { className: "hud-card" },
-        h("div", { className: "hud-card-header" },
-          h("span", { className: "card-title" }, "🧑‍🚀 Step 2: Assigned Expedition Crew (4 Specialists)"),
-          h("span", { className: "chip chip-green" }, "CREW READY FOR FLIGHT")
-        ),
-        h("div", { className: "crew-grid" },
-          crew.map(c => h("div", { key: c.id, className: "crew-card" },
-            h("div", { className: "crew-avatar" }, c.icon),
-            h("div", { className: "crew-name" }, c.name),
-            h("div", { className: "crew-role" }, c.role),
-            h("p", { style: { fontSize: "0.75rem", color: "var(--text-muted)" } }, c.bio),
-            h("div", { className: "crew-trait" }, c.trait)
-          ))
-        )
-      ),
-
-      // Starting Resource Supply Preview
-      h("div", { className: "hud-card" },
-        h("div", { className: "hud-card-header" },
-          h("span", { className: "card-title" }, "📦 Step 3: Starting Resource Supplies & Parameters"),
-          h("span", { className: "chip chip-yellow" }, "Game Units - Simplified for Mission Simulation")
-        ),
-        h("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 12, marginBottom: 16 } },
-          h(SupplyStat, { label: "Oxygen", val: 100 + (selectedBase.startingBonus.oxygen || 0), icon: "💨", color: "var(--cyan-glow)" }),
-          h(SupplyStat, { label: "Water", val: 100 + (selectedBase.startingBonus.water || 0), icon: "💧", color: "var(--cyan-subtle)" }),
-          h(SupplyStat, { label: "Food", val: 100 + (selectedBase.startingBonus.food || 0), icon: "🌱", color: "var(--green-safe)" }),
-          h(SupplyStat, { label: "Energy", val: 100 + (selectedBase.startingBonus.energy || 0), icon: "⚡", color: "var(--yellow-warn)" }),
-          h(SupplyStat, { label: "Radiation Shield", val: 80 + (selectedBase.startingBonus.radiation || 0), icon: "🛡️", color: "var(--purple-neon)" }),
-          h(SupplyStat, { label: "Crew Health", val: 100, icon: "🩺", color: "var(--red-alert)" })
-        ),
-        h("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12 } },
-          h("button", { className: "btn btn-ghost", onClick: onBack }, "← Back to Welcome"),
-          h("button", { className: "btn btn-cyan btn-lg", onClick: onLaunch }, "🚀 LAUNCH 10-DAY LUNAR MISSION")
-        )
-      )
-    );
-  }
-
-  function SupplyStat({ label, val, icon, color }) {
-    return h("div", { style: { background: "rgba(0,0,0,0.35)", padding: "10px 14px", borderRadius: "var(--radius-sm)", border: "1px solid rgba(255,255,255,0.08)" } },
-      h("div", { style: { fontSize: "0.75rem", color: "var(--text-dim)", textTransform: "uppercase" } }, `${icon} ${label}`),
-      h("div", { style: { fontSize: "1.2rem", fontWeight: 700, fontFamily: "var(--font-mono)", color } }, `${val} units`)
-    );
-  }
-
-  // SCREEN 3: MISSION CONTROL DASHBOARD
-  function ScreenDashboard(props) {
-    const {
-      day,
-      resources,
-      selectedBase,
-      subsystems,
-      onToggleSubsystem,
-      energyCalculations,
-      upgrades,
-      alerts,
-      activeTab,
-      setActiveTab,
-      scenarioResolvedToday,
-      activeScenario,
-      onOpenDecision,
-      onAdvanceDay,
-      scienceScore
-    } = props;
-
-    return h("div", { style: { display: "flex", flexDirection: "column", gap: 18 } },
-      // Top Navigation Tabs
-      h("div", { className: "mission-tabs" },
-        h("button", {
-          className: `tab-btn ${activeTab === "dashboard" ? 'active' : ''}`,
-          onClick: () => setActiveTab("dashboard")
-        }, "🖥️ Control Dashboard"),
-        h("button", {
-          className: `tab-btn ${activeTab === "decision" ? 'active' : ''}`,
-          onClick: () => { onOpenDecision(); }
-        },
-          "⚙️ Engineering Decisions",
-          !scenarioResolvedToday && h("span", { style: { width: 8, height: 8, borderRadius: "50%", background: "var(--yellow-warn)", display: "inline-block", boxShadow: "0 0 8px var(--yellow-warn)" } })
-        ),
-        h("button", {
-          className: `tab-btn ${activeTab === "upgrades" ? 'active' : ''}`,
-          onClick: () => setActiveTab("upgrades")
-        }, "🛠️ Base Upgrade Centre"),
-        h("button", {
-          className: `tab-btn ${activeTab === "crew" ? 'active' : ''}`,
-          onClick: () => setActiveTab("crew")
-        }, "🧑‍🚀 Crew & Subsystems")
-      ),
-
-      // Vital Resource Meters Grid (6 metrics)
-      h("div", { className: "resources-grid" },
-        h(ResourceMeter, { label: "Oxygen", value: resources.oxygen, max: 100, icon: "💨", barColor: "bar-cyan", note: "ECLSS Gas Loop" }),
-        h(ResourceMeter, { label: "Water", value: resources.water, max: 100, icon: "💧", barColor: "bar-blue", note: "Catalytic Recycling" }),
-        h(ResourceMeter, { label: "Food", value: resources.food, max: 100, icon: "🌱", barColor: "bar-green", note: "Aeroponic Pantry" }),
-        h(ResourceMeter, { label: "Energy", value: resources.energy, max: 100, icon: "⚡", barColor: "bar-yellow", note: "Photovoltaic Grid" }),
-        h(ResourceMeter, { label: "Radiation Shield", value: resources.radiation, max: 100, icon: "🛡️", barColor: "bar-purple", note: "Regolith & Coils" }),
-        h(ResourceMeter, { label: "Astronaut Health", value: resources.health, max: 100, icon: "🩺", barColor: "bar-red", note: "4 Crew Vitality" })
-      ),
-
-      // Tab Content Router
-      activeTab === "dashboard" && h(DashboardMainView, {
-        day,
-        resources,
-        selectedBase,
-        subsystems,
-        onToggleSubsystem,
-        energyCalculations,
-        upgrades,
-        alerts,
-        scenarioResolvedToday,
-        activeScenario,
-        onOpenDecision,
-        onAdvanceDay,
-        scienceScore
-      }),
-
-      activeTab === "upgrades" && h(ScreenUpgradesContent, {
-        resources,
-        upgrades,
-        upgradeDefs: window.GAME_DATA.upgrades,
-        onBuyUpgrade: props.onBuyUpgrade || (() => {})
-      }),
-
-      activeTab === "crew" && h(CrewSubsystemsView, {
-        crew: window.GAME_DATA.crew,
-        subsystems,
-        onToggleSubsystem,
-        selectedBase,
-        energyCalculations
-      })
-    );
-  }
-
-  // Dashboard Main View (Left Column: SVG & Grid, Right Column: Alerts & Decision)
-  function DashboardMainView(props) {
-    const {
-      day,
-      resources,
-      selectedBase,
-      subsystems,
-      onToggleSubsystem,
-      energyCalculations,
-      upgrades,
-      alerts,
-      scenarioResolvedToday,
-      activeScenario,
-      onOpenDecision,
-      onAdvanceDay,
-      scienceScore
-    } = props;
-
-    // SVG string rendered safely
-    const svgHtml = useMemo(() => {
-      if (typeof window.renderLunarBaseSvg === "function") {
-        return window.renderLunarBaseSvg({
-          day,
-          energy: resources.energy,
-          radiation: resources.radiation,
-          health: resources.health,
-          subsystems,
-          upgrades,
-          baseId: selectedBase.id
-        });
-      }
-      return "";
-    }, [day, resources, subsystems, upgrades, selectedBase]);
-
-    return h("div", { style: { display: "flex", flexDirection: "column", gap: 18 } },
-      // Day Advancement Bar HUD
-      h("div", { className: "day-advance-hud" },
-        h("div", { className: "day-timeline" },
-          h("div", { className: "day-indicator-text" }, `MISSION DAY ${day} OF 10: ${day <= 3 ? 'LUNAR DAWN' : (day <= 7 ? 'LUNAR MIDDAY' : 'LUNAR DUSK')}`),
-          h("div", { className: "day-dots" },
-            Array.from({ length: 10 }).map((_, idx) => {
-              const dNum = idx + 1;
-              let cls = "day-dot";
-              if (dNum < day) cls += " past";
-              if (dNum === day) cls += " current";
-              return h("div", { key: dNum, className: cls, title: `Day ${dNum}` });
-            })
-          )
-        ),
-
-        h("div", { style: { display: "flex", gap: 12, alignItems: "center" } },
-          h("div", { className: "chip chip-purple" }, `🔬 Science Score: ${scienceScore} pts`),
-          h("button", {
-            className: `btn ${scenarioResolvedToday ? 'btn-cyan' : 'btn-outline-cyan'} btn-lg`,
-            onClick: onAdvanceDay,
-            title: scenarioResolvedToday ? "Simulate daily consumption and proceed" : "You can advance now or resolve today's dilemma first"
-          }, day >= 10 ? "🏁 COMPLETE MISSION" : "⏭️ NEXT MISSION DAY")
-        )
-      ),
-
-      // Multi-Column HUD Grid
-      h("div", { className: "dashboard-grid" },
-        // Left Column: Visual Base Illustration & Subsystems Grid
-        h("div", { style: { display: "flex", flexDirection: "column", gap: 18 } },
-          h("div", { className: "hud-card", style: { padding: 0 } },
-            h("div", { 
-              className: "base-illustration-wrap",
-              dangerouslySetInnerHTML: { __html: svgHtml }
-            }),
-            h("div", { className: "base-overlay-stats" },
-              h("span", null, `📍 ${selectedBase.name}`),
-              h("span", null, `⚡ Solar Array Yield: ${energyCalculations.efficiency}%`),
-              h("span", null, `🛡️ Base Hull: ${resources.radiation >= 50 ? 'Pressurized Nominal' : 'Vulnerable'}`)
-            )
-          ),
-
-          // Subsystems Energy Management Card
-          h("div", { className: "hud-card" },
-            h("div", { className: "hud-card-header" },
-              h("span", { className: "card-title" }, "⚡ Base Energy Management & Subsystems Grid"),
-              h("div", { style: { fontSize: "0.78rem", fontFamily: "var(--font-mono)" } },
-                `Net Power: `,
-                h("span", { 
-                  style: { 
-                    color: energyCalculations.net >= 0 ? "var(--green-safe)" : "var(--red-alert)", 
-                    fontWeight: 700 
-                  } 
-                }, `${energyCalculations.net >= 0 ? '+' : ''}${energyCalculations.net} units/day`)
-              )
-            ),
-            h("div", { className: "subsystems-list" },
-              h(SubsystemToggleItem, {
-                title: "ECLSS Oxygen Electrolysis & Sabatier Reactor",
-                drainText: "-14 Energy / day | Produces cabin breathable gas",
-                active: subsystems.oxygenGen,
-                onToggle: () => onToggleSubsystem("oxygenGen"),
-                critical: true
-              }),
-              h(SubsystemToggleItem, {
-                title: "Catalytic Wastewater Recovery Distillation",
-                drainText: "-10 Energy / day | Closes the water loop to 95%",
-                active: subsystems.waterRecycler,
-                onToggle: () => onToggleSubsystem("waterRecycler"),
-                critical: true
-              }),
-              h(SubsystemToggleItem, {
-                title: "Vertical Hydroponics & Aeroponic Grow Lamps",
-                drainText: "-12 Energy / day | Yields fresh crops & fresh vitamins",
-                active: subsystems.hydroponics,
-                onToggle: () => onToggleSubsystem("hydroponics")
-              }),
-              h(SubsystemToggleItem, {
-                title: "Thermal Radiator Heat Pumps & Loop Cooling",
-                drainText: "-8 Energy / day | Prevents habitat thermal swings",
-                active: subsystems.thermalRadiators,
-                onToggle: () => onToggleSubsystem("thermalRadiators")
-              }),
-              h(SubsystemToggleItem, {
-                title: "High-Frequency Science Radar & Telemetry Dish",
-                drainText: "-6 Energy / day | Unlocks +3 Science Points daily",
-                active: subsystems.scienceRadar,
-                onToggle: () => onToggleSubsystem("scienceRadar")
-              }),
-              h(SubsystemToggleItem, {
-                title: "Auxiliary Active Radiation Deflector Grid",
-                drainText: "-16 Energy / day | Blocks radiation decay completely",
-                active: subsystems.auxShield,
-                onToggle: () => onToggleSubsystem("auxShield")
-              })
-            )
-          )
-        ),
-
-        // Right Column: Today's Dilemma & Emergency Alerts Feed
-        h("div", { style: { display: "flex", flexDirection: "column", gap: 18 } },
-          // Today's Decision Status Card
-          h("div", { className: "hud-card" },
-            h("div", { className: "hud-card-header" },
-              h("span", { className: "card-title" }, `⚠️ Day ${day} Engineering Dilemma`),
-              h("span", { className: scenarioResolvedToday ? "chip chip-green" : "chip chip-yellow" },
-                scenarioResolvedToday ? "RESOLVED TODAY" : "DECISION PENDING"
-              )
-            ),
-            h("h4", { style: { fontFamily: "var(--font-display)", fontSize: "0.95rem", color: "#ffffff", marginBottom: 8 } }, activeScenario.title),
-            h("p", { style: { fontSize: "0.85rem", color: "var(--text-muted)", lineHeight: 1.5, marginBottom: 14 } },
-              activeScenario.problem.length > 140 ? activeScenario.problem.slice(0, 140) + "..." : activeScenario.problem
-            ),
-            h("button", {
-              className: `btn ${scenarioResolvedToday ? 'btn-outline-cyan' : 'btn-purple'} btn-block`,
-              style: { width: "100%" },
-              onClick: onOpenDecision
-            }, scenarioResolvedToday ? "Review Dilemma & Science Notes" : "⚙️ Open Decision Centre")
-          ),
-
-          // Emergency Alerts Log Card
-          h("div", { className: "hud-card" },
-            h("div", { className: "hud-card-header" },
-              h("span", { className: "card-title" }, "📡 Mission Control Emergency Alerts"),
-              h("span", { className: "chip" }, `${alerts.length} LOGGED`)
-            ),
-            h("div", { className: "alerts-container" },
-              alerts.map(a => h("div", { key: a.id, className: `alert-item ${a.type}` },
-                h("span", { style: { fontFamily: "var(--font-mono)", fontSize: "0.72rem", color: "var(--cyan-subtle)" } }, `[D${a.day}]`),
-                h("span", null, a.text)
-              ))
-            )
-          )
-        )
-      )
-    );
-  }
-
-  // RESOURCE METER WIDGET
-  function ResourceMeter({ label, value, max, icon, barColor, note }) {
-    const pct = Math.max(0, Math.min(100, Math.round((value / max) * 100)));
-    let statusClass = "meter-nominal";
-    let statusLabel = "NOMINAL";
-    let statusColor = "var(--green-safe)";
-
-    if (pct < 20) {
-      statusClass = "meter-critical";
-      statusLabel = "CRITICAL";
-      statusColor = "var(--red-alert)";
-    } else if (pct < 40) {
-      statusClass = "meter-warning";
-      statusLabel = "WARNING";
-      statusColor = "var(--yellow-warn)";
-    }
-
-    return h("div", { className: `resource-meter ${statusClass}`, title: `${label}: ${value}/${max} units (${statusLabel})` },
-      h("div", { className: "meter-top" },
-        h("div", { className: "meter-icon-name" },
-          h("span", null, icon),
-          h("span", null, label)
-        ),
-        h("div", { className: "meter-value", style: { color: statusColor } }, value)
-      ),
-      h("div", { className: "bar-container" },
-        h("div", { className: `bar-fill ${barColor}`, style: { width: `${pct}%` } })
-      ),
-      h("div", { className: "meter-status-text" },
-        h("span", null, note),
-        h("span", { style: { color: statusColor, fontWeight: 700 } }, statusLabel)
-      )
-    );
-  }
-
-  // SUBSYSTEM TOGGLE ITEM
-  function SubsystemToggleItem({ title, drainText, active, onToggle, critical }) {
-    return h("div", { className: "subsystem-item" },
-      h("div", { className: "subsystem-info" },
-        h("div", { className: "subsystem-name" },
-          title,
-          critical && h("span", { className: "chip chip-yellow", style: { fontSize: "0.65rem", padding: "1px 6px" } }, "VITAL")
-        ),
-        h("div", { className: "subsystem-drain" }, drainText)
-      ),
-      h("label", { className: "switch" },
-        h("input", { type: "checkbox", checked: active, onChange: onToggle }),
-        h("span", { className: "slider" })
-      )
-    );
-  }
-
-  // SCREEN 4: ENGINEERING DECISION CENTRE
-  function ScreenDecision(props) {
-    const { day, scenario, scenarioResolvedToday, recentChoiceResult, onMakeChoice, onBackToDashboard, onAdvanceDay } = props;
-
-    return h("div", { className: "decision-scenario-card" },
-      h("div", { className: "hud-card" },
-        h("div", { className: "hud-card-header" },
-          h("div", { style: { display: "flex", alignItems: "center", gap: 10 } },
-            h("span", { className: "card-title" }, `⚙️ Engineering Decision Centre`),
-            h("span", { className: "chip chip-cyan" }, `DAY ${day} SCENARIO`)
-          ),
-          h("button", { className: "btn btn-ghost btn-sm", onClick: onBackToDashboard }, "← Return to Dashboard")
-        ),
-
-        h("h2", { style: { fontFamily: "var(--font-display)", fontSize: "1.3rem", color: "#ffffff", marginBottom: 12 } }, scenario.title),
-        h("div", { className: "scenario-story" }, scenario.problem)
-      ),
-
-      // Choices or Results
-      !scenarioResolvedToday ? h("div", { className: "choices-grid" },
-        scenario.choices.map((choice, idx) => {
-          const letter = ["A", "B", "C"][idx] || "•";
-          return h("div", {
-            key: choice.id,
-            className: "choice-card",
-            onClick: () => onMakeChoice(choice)
-          },
-            h("div", { className: "choice-header" },
-              h("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center" } },
-                h("span", { className: "choice-letter" }, letter),
-                h("span", { className: "chip" }, "Option")
-              ),
-              h("h4", { className: "choice-title" }, choice.label)
-            ),
-            h("div", { className: "choice-impacts" },
-              h("div", { className: "impact-cost" }, `⚠️ Impact: ${choice.costText}`),
-              h("div", { className: "impact-benefit" }, `✅ Result: ${choice.benefitText}`)
-            ),
-            h("button", { className: "btn btn-cyan btn-sm", style: { width: "100%", marginTop: 6 } }, `Execute Decision ${letter}`)
-          );
-        })
-      ) : h("div", { className: "decision-result-panel" },
-        h("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center" } },
-          h("h3", { style: { fontFamily: "var(--font-display)", color: "var(--cyan-glow)", fontSize: "1.1rem" } },
-            `✅ Decision Logged: ${recentChoiceResult ? recentChoiceResult.choice.label : "Resolved"}`
-          ),
-          h("span", { className: "chip chip-green" }, "SYSTEM UPDATED")
-        ),
-        h("p", { style: { fontSize: "0.95rem", color: "#f8fafc", lineHeight: 1.6 } },
-          recentChoiceResult ? recentChoiceResult.choice.feedback : "The station responded to your commands."
-        ),
-
-        // Science Explainer Card
-        h("div", { className: "science-explainer-card" },
-          h("p", { className: "science-explainer-text" },
-            recentChoiceResult ? recentChoiceResult.choice.scienceFact : "Lunar science note recorded."
-          )
-        ),
-
-        h("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 8, flexWrap: "wrap", gap: 10 } },
-          h("button", { className: "btn btn-ghost", onClick: onBackToDashboard }, "← View Control Dashboard"),
-          h("button", { className: "btn btn-cyan btn-lg", onClick: onAdvanceDay }, day >= 10 ? "🏁 COMPLETE MISSION" : "⏭️ PROCEED TO NEXT DAY")
-        )
-      )
-    );
-  }
-
-  // SCREEN 5: BASE UPGRADE CENTRE
-  function ScreenUpgrades(props) {
-    const { resources, upgrades, upgradeDefs, onBuyUpgrade, onBackToDashboard } = props;
-
-    return h("div", { style: { display: "flex", flexDirection: "column", gap: 18 } },
-      h("div", { className: "hud-card" },
-        h("div", { className: "hud-card-header" },
-          h("span", { className: "card-title" }, "🛠️ Base Engineering & Upgrade Centre"),
-          h("button", { className: "btn btn-ghost btn-sm", onClick: onBackToDashboard }, "← Return to Dashboard")
-        ),
-        h("p", { style: { fontSize: "0.9rem", color: "var(--text-muted)" } },
-          "Invest limited base resources to permanently enhance your habitat's survivability, power output, closed-loop water recovery, and radiation shielding."
-        )
-      ),
-
-      h(ScreenUpgradesContent, { resources, upgrades, upgradeDefs, onBuyUpgrade })
-    );
-  }
-
-  function ScreenUpgradesContent({ resources, upgrades, upgradeDefs, onBuyUpgrade }) {
-    return h("div", { className: "upgrades-grid" },
-      upgradeDefs.map(u => {
-        const curLevel = upgrades[u.id] || 0;
-        const nextLevelDef = u.levels.find(l => l.level === curLevel + 1);
-        const isMax = curLevel >= u.levels.length;
-
-        // Check if player can afford next level
-        let canAfford = false;
-        if (nextLevelDef) {
-          const cost = nextLevelDef.cost;
-          canAfford = 
-            (!cost.energy || resources.energy >= cost.energy) &&
-            (!cost.water || resources.water >= cost.water) &&
-            (!cost.food || resources.food >= cost.food);
+        onPlayAgain: () => {
+          sound.click();
+          setScreen('menu');
+          setModal(null);
         }
-
-        return h("div", { key: u.id, className: "upgrade-card" },
-          h("div", { className: "upgrade-card-top" },
-            h("div", { className: "upgrade-icon-box" }, u.icon),
-            h("div", { className: "upgrade-details" },
-              h("div", { className: "upgrade-category" }, u.category),
-              h("h4", null, u.name),
-              h("span", { className: curLevel > 0 ? "chip chip-green" : "chip" }, `Level ${curLevel} of ${u.levels.length}`)
-            )
-          ),
-
-          h("p", { style: { fontSize: "0.82rem", color: "var(--text-muted)", margin: "4px 0" } }, u.description),
-
-          h("div", { className: "upgrade-levels-flow" },
-            u.levels.map(lvl => {
-              const unlocked = curLevel >= lvl.level;
-              return h("div", { key: lvl.level, className: "level-row", style: { opacity: unlocked ? 1 : 0.7 } },
-                h("span", { className: "level-name" }, `${unlocked ? '✅' : '🔒'} Lv ${lvl.level}: ${lvl.name}`),
-                h("span", { className: "level-cost-badge" },
-                  unlocked ? "INSTALLED" : Object.entries(lvl.cost).map(([k, v]) => `${v} ${k}`).join(", ")
-                )
-              );
-            })
-          ),
-
-          !isMax && nextLevelDef ? h("div", { style: { display: "flex", flexDirection: "column", gap: 6, marginTop: 4 } },
-            h("div", { style: { fontSize: "0.76rem", color: "var(--cyan-subtle)" } }, `Next: ${nextLevelDef.effect}`),
-            h("button", {
-              className: `btn ${canAfford ? 'btn-purple' : 'btn-ghost'} btn-sm`,
-              disabled: !canAfford,
-              onClick: () => onBuyUpgrade(u.id, nextLevelDef.level)
-            }, canAfford ? `Upgrade to Level ${nextLevelDef.level}` : "Insufficient Resources")
-          ) : h("div", { className: "chip chip-cyan", style: { alignSelf: "flex-start", marginTop: 6 } }, "MAX LEVEL REACHED")
-        );
       })
     );
   }
 
-  // CREW & SUBSYSTEMS DETAILED VIEW
-  function CrewSubsystemsView({ crew, subsystems, onToggleSubsystem, selectedBase, energyCalculations }) {
-    return h("div", { style: { display: "flex", flexDirection: "column", gap: 18 } },
-      h("div", { className: "hud-card" },
-        h("div", { className: "hud-card-header" },
-          h("span", { className: "card-title" }, "🧑‍🚀 Expedition 1 Crew Specialists"),
-          h("span", { className: "chip chip-green" }, "ALL ACTIVE")
-        ),
-        h("div", { className: "crew-grid" },
-          crew.map(c => h("div", { key: c.id, className: "crew-card" },
-            h("div", { className: "crew-avatar" }, c.icon),
-            h("div", { className: "crew-name" }, c.name),
-            h("div", { className: "crew-role" }, c.role),
-            h("p", { style: { fontSize: "0.78rem", color: "var(--text-muted)" } }, c.bio),
-            h("div", { className: "crew-trait" }, c.trait)
-          ))
-        )
+  // =========================================================================
+  // SCREEN 1: PROFESSIONAL PC GAME MAIN MENU (RIGHT-ALIGNED MENU)
+  // =========================================================================
+  function MainMenuScreen({ hasSaveGame, onResume, onNewGame, onMissionSelect, onSettings, onScienceLog, onExit }) {
+    return h('div', { className: 'menu-screen-overlay' },
+      // Left Cinematic Branding & Tagline
+      h('div', { className: 'menu-branding-left' },
+        h('div', { className: 'menu-badge' }, '🚀 NASA Space Apps Challenge 2026 Special Edition'),
+        h('h1', { className: 'menu-game-title' }, 'ASTROBASE'),
+        h('div', { className: 'menu-game-subtitle' }, 'Junior Astronaut Mission Trainer'),
+        h('p', { className: 'menu-tagline' }, '“Think like an engineer. Decide like a commander. Survive like an astronaut.”'),
+        h('div', { className: 'menu-version-tag' }, 'REALISTIC 3D LUNAR SIMULATION ENGINE • BUILD 2026.4 • VERIFIED FLIGHT READY')
       ),
 
-      h("div", { className: "hud-card" },
-        h("div", { className: "hud-card-header" },
-          h("span", { className: "card-title" }, "📍 Lunar Geological Site Analysis"),
-          h("span", { className: "chip chip-purple" }, selectedBase.badge)
+      // Right-Aligned Professional Vertical Action Menu
+      h('div', { className: 'menu-actions-right' },
+        h('button', {
+          className: `menu-btn ${hasSaveGame ? 'primary-btn' : 'disabled'}`,
+          onClick: onResume,
+          onMouseEnter: () => sound.hover()
+        },
+          h('span', null, '1. RESUME MISSION'),
+          h('span', { className: 'btn-arrow' }, '▶')
         ),
-        h("h3", { style: { fontFamily: "var(--font-display)", color: "#ffffff", marginBottom: 6 } }, selectedBase.name),
-        h("p", { style: { fontSize: "0.88rem", color: "var(--text-muted)", marginBottom: 12 } }, selectedBase.description),
-        h("div", { className: "chip chip-cyan" }, `Active Site Trait: ${selectedBase.bonusText}`)
+
+        h('button', {
+          className: 'menu-btn primary-btn',
+          onClick: onNewGame,
+          onMouseEnter: () => sound.hover()
+        },
+          h('span', null, '2. NEW GAME'),
+          h('span', { className: 'btn-arrow' }, '▶')
+        ),
+
+        h('button', {
+          className: 'menu-btn',
+          onClick: onMissionSelect,
+          onMouseEnter: () => sound.hover()
+        },
+          h('span', null, '3. MISSION SELECT'),
+          h('span', { className: 'btn-arrow' }, '▶')
+        ),
+
+        h('button', {
+          className: 'menu-btn',
+          onClick: onSettings,
+          onMouseEnter: () => sound.hover()
+        },
+          h('span', null, '4. SETTINGS'),
+          h('span', { className: 'btn-arrow' }, '▶')
+        ),
+
+        h('button', {
+          className: 'menu-btn',
+          onClick: onScienceLog,
+          onMouseEnter: () => sound.hover()
+        },
+          h('span', null, '5. SCIENCE LOG'),
+          h('span', { className: 'btn-arrow' }, '▶')
+        ),
+
+        h('button', {
+          className: 'menu-btn',
+          onClick: onExit,
+          onMouseEnter: () => sound.hover()
+        },
+          h('span', null, '6. RESET / EXIT'),
+          h('span', { className: 'btn-arrow' }, '▶')
+        )
       )
     );
   }
 
-  // SCREEN 6: MISSION RESULTS & DEBRIEFING
-  function ScreenResults(props) {
-    const { evaluation, decisionsHistory, resources, scienceScore, selectedBase, onPlayAgain } = props;
-
-    return h("div", { className: "results-container" },
-      h("div", { className: "results-banner" },
-        h("span", { className: "chip chip-purple" }, evaluation.badge),
-        h("h1", { 
-          style: { 
-            fontFamily: "var(--font-display)", 
-            fontSize: "2rem", 
-            letterSpacing: "2px", 
-            color: evaluation.color 
-          } 
-        }, evaluation.status),
-        h("h3", { style: { fontSize: "1.1rem", color: "#cbd5e1", fontWeight: 500 } }, evaluation.rank),
-
-        // Score circle
-        h("div", { className: "results-score-circle", style: { borderColor: evaluation.color } },
-          h("span", { className: "score-num" }, evaluation.score),
-          h("span", { className: "score-sub" }, "OUT OF 100")
+  // =========================================================================
+  // SCREEN 2: TACTICAL IN-GAME HUD
+  // =========================================================================
+  function GameplayHUD({ day, resources, currentScenario, dayObjectiveCompleted, activeStation, radioMessage, onAdvanceDay, onOpenPause }) {
+    return h('div', { className: 'gameplay-hud-root' },
+      // Top Bar
+      h('div', { className: 'hud-top-bar' },
+        // Top-Left: Minimalist Vital Meters
+        h('div', { className: 'hud-vitals-panel' },
+          h(VitalGauge, { name: 'O2 OXYGEN', val: resources.oxygen, fillClass: 'fill-cyan', unit: 'u' }),
+          h(VitalGauge, { name: 'H2O WATER', val: resources.water, fillClass: 'fill-blue', unit: 'u' }),
+          h(VitalGauge, { name: 'BIOMASS FOOD', val: resources.food, fillClass: 'fill-green', unit: 'u' }),
+          h(VitalGauge, { name: 'POWER ENERGY', val: resources.energy, fillClass: 'fill-yellow', unit: 'u' }),
+          h(VitalGauge, { name: 'RADIATION SHIELD', val: resources.radiation, fillClass: 'fill-purple', unit: 'u' }),
+          h(VitalGauge, { name: 'CREW HEALTH', val: resources.health, fillClass: 'fill-red', unit: '%' })
         ),
 
-        // Score Breakdown
-        h("div", { style: { display: "flex", gap: 14, flexWrap: "wrap", justifyContent: "center", fontSize: "0.82rem", fontFamily: "var(--font-mono)", color: "var(--text-muted)" } },
-          h("span", null, `Survival: ${evaluation.survivalPts}/30`),
-          h("span", null, `Crew Health: ${evaluation.healthPts}/25`),
-          h("span", null, `Resources: ${evaluation.resourcePts}/20`),
-          h("span", null, `Science: ${evaluation.sciencePts}/15`),
-          h("span", null, `Upgrades: ${evaluation.upgradePts}/10`)
+        // Top-Center: Mission Day & Telemetry
+        h('div', { className: 'hud-telemetry-center' },
+          h('div', { className: 'hud-day-pill' }, `MISSION DAY ${day} OF 10: ${day <= 3 ? 'LUNAR DAWN' : (day <= 7 ? 'SOLAR ZENITH' : 'LUNAR DUSK')}`),
+          h('div', { className: 'hud-env-stats' },
+            h('span', null, 'SURFACE: -45°C'),
+            h('span', null, 'GRAVITY: 1/6G (1.62 m/s²)'),
+            h('span', null, 'VACUUM: NOMINAL')
+          )
         ),
 
-        h("button", { className: "btn btn-cyan btn-lg", onClick: onPlayAgain, style: { marginTop: 10 } }, "🔄 PLAY AGAIN (NEW MISSION)")
-      ),
-
-      // Final Mission Statistics
-      h("div", { className: "hud-card", style: { width: "100%", maxWidth: 800 } },
-        h("div", { className: "hud-card-header" },
-          h("span", { className: "card-title" }, "📊 Final Habitat Telemetry & Remaining Stores")
-        ),
-        h("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(110px, 1fr))", gap: 10, textAlign: "center" } },
-          h(ResultMetric, { label: "Days Completed", val: `${evaluation.daysSurvived} / 10`, color: "var(--cyan-glow)" }),
-          h(ResultMetric, { label: "Final Health", val: `${resources.health}%`, color: resources.health > 50 ? "var(--green-safe)" : "var(--red-alert)" }),
-          h(ResultMetric, { label: "Oxygen Left", val: `${resources.oxygen}u`, color: "var(--cyan-glow)" }),
-          h(ResultMetric, { label: "Water Left", val: `${resources.water}u`, color: "var(--cyan-subtle)" }),
-          h(ResultMetric, { label: "Food Left", val: `${resources.food}u`, color: "var(--green-safe)" }),
-          h(ResultMetric, { label: "Energy Left", val: `${resources.energy}u`, color: "var(--yellow-warn)" }),
-          h(ResultMetric, { label: "Radiation Shield", val: `${resources.radiation}u`, color: "var(--purple-neon)" })
+        // Top-Right: Active Objective Panel
+        h('div', { className: 'hud-objective-panel' },
+          h('div', { className: 'hud-obj-header' }, `DAY ${day} DIRECTIVE`),
+          h('div', { className: 'hud-obj-title' }, currentScenario.title),
+          h('div', { className: 'hud-obj-task' },
+            h('span', null, dayObjectiveCompleted ? '✅' : '⏳'),
+            h('span', null, dayObjectiveCompleted ? 'Operational Crisis Resolved!' : 'Walk to Base Stations and press [E] to investigate.')
+          ),
+          dayObjectiveCompleted && h('button', {
+            className: 'pause-btn primary',
+            style: { width: '100%', marginTop: 8, padding: '8px 12px', fontSize: '0.8rem' },
+            onClick: onAdvanceDay
+          }, day >= 10 ? '🏁 COMPLETE 10-DAY MISSION' : '⏭️ ADVANCE TO NEXT MISSION DAY')
         )
       ),
 
-      // Unlocked Scientific Achievements
-      h("div", { className: "hud-card", style: { width: "100%", maxWidth: 800 } },
-        h("div", { className: "hud-card-header" },
-          h("span", { className: "card-title" }, "🏆 Scientific Achievements & Medals"),
-          h("span", { className: "chip" }, `${evaluation.unlockedAchievements.length} of ${window.GAME_DATA.achievements.length} UNLOCKED`)
+      // Center Reticle & Contextual Interaction Prompt
+      h('div', { className: 'hud-center-reticle' },
+        h('div', { className: 'reticle-dot' }),
+        activeStation && h('div', { className: 'interaction-prompt-box' },
+          h('span', { className: 'key-badge' }, 'E'),
+          h('span', { className: 'prompt-text' }, activeStation.prompt || `INTERACT: ${activeStation.name}`)
+        )
+      ),
+
+      // Bottom Bar
+      h('div', { className: 'hud-bottom-bar' },
+        h('div', { className: 'hud-controls-helper' },
+          '[W,A,S,D] WALK | [SHIFT] SPRINT | [SPACE] LOW-G JUMP | [E] INTERACT | [V] VIEW | [ESC] PAUSE'
         ),
-        h("div", { className: "achievements-grid" },
-          window.GAME_DATA.achievements.map(ach => {
-            const unlocked = evaluation.unlockedAchievements.some(u => u.id === ach.id);
-            return h("div", { key: ach.id, className: `achievement-card ${unlocked ? 'unlocked' : ''}` },
-              h("div", { className: "achieve-icon" }, ach.icon),
-              h("div", { className: "achieve-text" },
-                h("h5", null, ach.name),
-                h("p", null, ach.description)
-              )
+
+        radioMessage && h('div', { className: 'hud-radio-transmission' },
+          h('div', { className: 'radio-sender' }, `📡 COMM LINK: ${radioMessage.sender}`),
+          h('div', { className: 'radio-text' }, radioMessage.text)
+        )
+      )
+    );
+  }
+
+  function VitalGauge({ name, val, fillClass, unit }) {
+    const pct = Math.max(0, Math.min(100, Math.round(val)));
+    return h('div', { className: 'vital-gauge' },
+      h('div', { className: 'vital-info-row' },
+        h('span', { className: 'vital-name' }, name),
+        h('span', { className: 'vital-value' }, `${val}${unit}`)
+      ),
+      h('div', { className: 'vital-bar-track' },
+        h('div', { className: `vital-bar-fill ${fillClass}`, style: { width: `${pct}%` } })
+      )
+    );
+  }
+
+  // =========================================================================
+  // SCREEN 3: PAUSE MENU (ESC)
+  // =========================================================================
+  function PauseMenuModal({ onResume, onObjectives, onScienceLog, onSettings, onSave, onMainMenu }) {
+    return h('div', { className: 'modal-backdrop' },
+      h('div', { className: 'pause-panel' },
+        h('h2', { className: 'pause-title' }, 'MISSION PAUSED'),
+
+        h('button', { className: 'pause-btn primary', onClick: onResume }, 'Resume Mission'),
+        h('button', { className: 'pause-btn', onClick: onSave }, '💾 Save Game State'),
+        h('button', { className: 'pause-btn', onClick: onScienceLog }, '🧪 Science Curriculum Log'),
+        h('button', { className: 'pause-btn', onClick: onSettings }, '⚙️ Game Settings'),
+        h('button', { className: 'pause-btn', onClick: onMainMenu }, 'Exit to Main Menu')
+      )
+    );
+  }
+
+  // =========================================================================
+  // STATION INTERACTION MODAL (Triggered by pressing E in 3D)
+  // =========================================================================
+  function StationInteractionModal({ station, scenario, day, onExecuteChoice, onClose }) {
+    return h('div', { className: 'modal-backdrop', onClick: onClose },
+      h('div', { className: 'station-dialog-card', onClick: (e) => e.stopPropagation() },
+        h('div', { className: 'station-header' },
+          h('div', null,
+            h('div', { className: 'station-category' }, `${station ? station.category : 'Operations'} • Day ${day}`),
+            h('h2', { className: 'station-title' }, station ? station.name : scenario.title)
+          ),
+          h('button', { className: 'pause-btn', style: { padding: '6px 14px' }, onClick: onClose }, '✕ ESC')
+        ),
+
+        h('div', { className: 'station-problem-box' }, scenario.problem),
+
+        h('div', { style: { fontFamily: 'var(--font-display)', fontSize: '0.85rem', color: 'var(--cyan-primary)', letterSpacing: '1px' } },
+          'COMMAND DIRECTIVE: CHOOSE AN ACTION (BALANCED TRADE-OFFS)'
+        ),
+
+        h('div', { className: 'station-choices-grid' },
+          scenario.choices.map((choice, idx) => h('div', {
+            key: choice.id,
+            className: 'station-choice-card',
+            onClick: () => onExecuteChoice(choice)
+          },
+            h('div', { className: 'choice-top-line' },
+              h('span', { className: 'choice-label' }, `${['A', 'B', 'C'][idx]}. ${choice.label}`),
+              h('span', { className: 'choice-cost-badge' }, choice.costText)
+            ),
+            h('div', { className: 'choice-benefit-badge' }, `Outcome: ${choice.benefitText}`)
+          ))
+        ),
+
+        // Science Note
+        h('div', { className: 'science-curriculum-box' },
+          h('div', { className: 'science-curriculum-header' }, '🧪 NASA Space Apps Educational Concept'),
+          h('p', null, scenario.choices[0].scienceFact)
+        )
+      )
+    );
+  }
+
+  // =========================================================================
+  // MISSION SETUP & DEPLOYMENT BRIEFING
+  // =========================================================================
+  function MissionSetupModal({ bases, crew, onLaunch, onClose }) {
+    const [selBase, setSelBase] = useState(bases[0]);
+
+    return h('div', { className: 'modal-backdrop', onClick: onClose },
+      h('div', { className: 'station-dialog-card', style: { width: 840 }, onClick: (e) => e.stopPropagation() },
+        h('div', { className: 'station-header' },
+          h('h2', { className: 'station-title' }, 'MISSION DEPLOYMENT: 10-DAY EXPEDITION'),
+          h('button', { className: 'pause-btn', style: { padding: '6px 14px' }, onClick: onClose }, '✕')
+        ),
+
+        h('p', { style: { color: 'var(--text-muted)', fontSize: '0.9rem' } },
+          'Select your target lunar research site. Each location features distinct environmental advantages, mineral densities, and life-support logistics.'
+        ),
+
+        h('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 12 } },
+          bases.map(b => {
+            const isSel = selBase.id === b.id;
+            return h('div', {
+              key: b.id,
+              className: 'station-choice-card',
+              style: { borderColor: isSel ? 'var(--cyan-primary)' : 'rgba(255,255,255,0.1)', background: isSel ? 'rgba(0,240,255,0.1)' : 'transparent' },
+              onClick: () => setSelBase(b)
+            },
+              h('div', { style: { fontFamily: 'var(--font-display)', fontWeight: 700, color: isSel ? 'var(--cyan-primary)' : '#fff' } }, b.name),
+              h('div', { style: { fontSize: '0.75rem', color: 'var(--gold-accent)' } }, b.bonusText),
+              h('p', { style: { fontSize: '0.8rem', color: 'var(--text-muted)' } }, b.description)
             );
           })
-        )
-      ),
-
-      // Educational Lessons Learned Section
-      h("div", { className: "hud-card", style: { width: "100%", maxWidth: 800 } },
-        h("div", { className: "hud-card-header" },
-          h("span", { className: "card-title" }, "🧪 Mission Lessons Learned in Lunar Space Science")
         ),
-        h("div", { style: { display: "flex", flexDirection: "column", gap: 12, fontSize: "0.88rem", color: "#cbd5e1", lineHeight: 1.6 } },
-          h("p", null, "• ", h("strong", null, "Closed-Loop Life Support:"), " In space, supply chains from Earth are months or years apart. Recycling water vapor from crew breath, urine, and exhaled CO2 through catalytic oxidation is mandatory for long-duration extraterrestrial settlement."),
-          h("p", null, "• ", h("strong", null, "The Moon is Not Earth or Mars:"), " Unlike Mars, the Moon has absolutely no atmosphere to slow down micrometeorites or insulate against thermal extremes (+120°C in sunlight to -130°C in shadow). Lunar dust is sharp, un-weathered, and electrostatically charged."),
-          h("p", null, "• ", h("strong", null, "In-Situ Resource Utilization (ISRU):"), " Sintering lunar regolith using microwaves creates thick protective radiation shielding without launching concrete from Earth, while polar ice cold traps provide life-sustaining drinking water and liquid hydrogen rocket propellant.")
+
+        h('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 12 } },
+          h('button', { className: 'pause-btn', onClick: onClose }, 'Cancel'),
+          h('button', { className: 'pause-btn primary', onClick: () => onLaunch(selBase) }, '🚀 DEPLOY ASTRONAUT CREW TO 3D BASE')
         )
       )
     );
   }
 
-  function ResultMetric({ label, val, color }) {
-    return h("div", { style: { background: "rgba(0,0,0,0.3)", padding: 10, borderRadius: "var(--radius-sm)", border: "1px solid rgba(255,255,255,0.06)" } },
-      h("div", { style: { fontSize: "0.72rem", color: "var(--text-dim)", textTransform: "uppercase" } }, label),
-      h("div", { style: { fontSize: "1.1rem", fontFamily: "var(--font-mono)", fontWeight: 700, color } }, val)
-    );
-  }
-
-  // MODAL: HOW TO PLAY / TUTORIAL
-  function ModalTutorial({ onClose }) {
-    const [tab, setTab] = useState(1);
-
-    return h("div", { className: "modal-overlay", onClick: onClose },
-      h("div", { className: "modal-content", onClick: (e) => e.stopPropagation() },
-        h("div", { className: "modal-header" },
-          h("div", { style: { display: "flex", alignItems: "center", gap: 8 } },
-            h("span", { style: { fontSize: 22 } }, "📖"),
-            h("h3", { style: { fontFamily: "var(--font-display)", color: "var(--cyan-glow)" } }, "ASTROBASE: Junior Astronaut Manual")
-          ),
-          h("button", { className: "modal-close-btn", onClick: onClose }, "×")
+  // =========================================================================
+  // MISSION SELECT MODAL (Day 1 to 10 Scenarios)
+  // =========================================================================
+  function MissionSelectModal({ scenarios, currentDay, onSelectDay, onClose }) {
+    return h('div', { className: 'modal-backdrop', onClick: onClose },
+      h('div', { className: 'station-dialog-card', style: { width: 780 }, onClick: (e) => e.stopPropagation() },
+        h('div', { className: 'station-header' },
+          h('h2', { className: 'station-title' }, 'CAMPAIGN MISSION SELECT (DAYS 1–10)'),
+          h('button', { className: 'pause-btn', style: { padding: '6px 14px' }, onClick: onClose }, '✕')
         ),
 
-        h("div", { style: { display: "flex", gap: 8, borderBottom: "1px solid rgba(255,255,255,0.1)", paddingBottom: 10 } },
-          h("button", { className: `btn btn-sm ${tab === 1 ? 'btn-cyan' : 'btn-ghost'}`, onClick: () => setTab(1) }, "1. Mission Overview"),
-          h("button", { className: `btn btn-sm ${tab === 2 ? 'btn-cyan' : 'btn-ghost'}`, onClick: () => setTab(2) }, "2. The 6 Resources"),
-          h("button", { className: `btn btn-sm ${tab === 3 ? 'btn-cyan' : 'btn-ghost'}`, onClick: () => setTab(3) }, "3. Energy Management"),
-          h("button", { className: `btn btn-sm ${tab === 4 ? 'btn-cyan' : 'btn-ghost'}`, onClick: () => setTab(4) }, "4. Upgrades & Science")
-        ),
-
-        h("div", { style: { minHeight: 220, fontSize: "0.92rem", lineHeight: 1.6, color: "#e2e8f0" } },
-          tab === 1 && h("div", null,
-            h("h4", { style: { color: "var(--cyan-glow)", marginBottom: 8 } }, "Your 10-Day Lunar Command"),
-            h("p", { style: { marginBottom: 10 } }, "You command a 4-person scientific outpost on the Moon. Each mission day, your astronauts breathe oxygen, drink water, consume food, and draw electrical power from the solar arrays."),
-            h("p", null, "Your goal is to survive all 10 days, protect your crew's health, resolve daily engineering anomalies, and unlock scientific breakthroughs to earn high honors at Earth Mission Control!")
-          ),
-
-          tab === 2 && h("div", null,
-            h("h4", { style: { color: "var(--cyan-glow)", marginBottom: 8 } }, "Managing the 6 Vital Indicators"),
-            h("ul", { style: { paddingLeft: 20, display: "flex", flexDirection: "column", gap: 8 } },
-              h("li", null, h("strong", { style: { color: "var(--cyan-glow)" } }, "Oxygen:"), " Breathing gas. If it hits 0, severe hypoxia damages astronaut health (-25 health/day)."),
-              h("li", null, h("strong", { style: { color: "var(--cyan-subtle)" } }, "Water:"), " Essential for hydration and thermal buffering. Dehydration causes -18 health/day."),
-              h("li", null, h("strong", { style: { color: "var(--green-safe)" } }, "Food:"), " Caloric nourishment. Depleted food causes -12 health/day."),
-              h("li", null, h("strong", { style: { color: "var(--yellow-warn)" } }, "Energy:"), " Powers life-support pumps and heaters. Blackouts cause habitat freezing (-10 health/day)."),
-              h("li", null, h("strong", { style: { color: "var(--purple-neon)" } }, "Radiation Shield:"), " Protects against cosmic rays. Drops below 20 cause acute radiation sickness (-8 health/day)."),
-              h("li", null, h("strong", { style: { color: "var(--red-alert)" } }, "Astronaut Health:"), " The vitality of your 4 astronauts. If health hits 0, the mission fails immediately!")
-            )
-          ),
-
-          tab === 3 && h("div", null,
-            h("h4", { style: { color: "var(--cyan-glow)", marginBottom: 8 } }, "Power Grid & Subsystems"),
-            h("p", { style: { marginBottom: 10 } }, "On the Dashboard, you have power switches for non-critical base modules. When battery reserves run low, you can power down Science Radars or dim Hydroponic lamps to ensure life-support oxygen pumps keep running."),
-            h("p", null, "Watch the Net Energy indicator: positive net power charges batteries; negative net power drains them!")
-          ),
-
-          tab === 4 && h("div", null,
-            h("h4", { style: { color: "var(--cyan-glow)", marginBottom: 8 } }, "Engineering Decisions & Upgrades"),
-            h("p", { style: { marginBottom: 10 } }, "Each day brings a real-world dilemma—like lunar dust adhering to solar panels or a water filter biofilm clog. Weigh the trade-offs: spending power vs risking crew stamina vs conserving supplies."),
-            h("p", null, "Invest in the Base Upgrade Centre to install high-efficiency solar trackers, regolith sintering armor, and aeroponic vertical farming!")
-          )
-        ),
-
-        h("div", { style: { display: "flex", justifyContent: "flex-end" } },
-          h("button", { className: "btn btn-cyan btn-sm", onClick: onClose }, "Acknowledge & Close")
-        )
-      )
-    );
-  }
-
-  // MODAL: SCIENCE LOG
-  function ModalScienceLog({ decisionsHistory, onClose }) {
-    return h("div", { className: "modal-overlay", onClick: onClose },
-      h("div", { className: "modal-content", onClick: (e) => e.stopPropagation() },
-        h("div", { className: "modal-header" },
-          h("div", { style: { display: "flex", alignItems: "center", gap: 8 } },
-            h("span", { style: { fontSize: 22 } }, "🧪"),
-            h("h3", { style: { fontFamily: "var(--font-display)", color: "var(--purple-neon)" } }, "Space Science Curriculum Log")
-          ),
-          h("button", { className: "modal-close-btn", onClick: onClose }, "×")
-        ),
-
-        h("div", { style: { display: "flex", flexDirection: "column", gap: 14 } },
-          decisionsHistory.length === 0 ? h("p", { style: { color: "var(--text-muted)", fontStyle: "italic" } },
-            "No engineering decisions logged yet. Resolve mission dilemmas to unlock real space science curriculum notes!"
-          ) : decisionsHistory.map((d, i) => h("div", {
-            key: i,
-            style: { background: "rgba(0,0,0,0.3)", padding: 14, borderRadius: "var(--radius-sm)", borderLeft: "3px solid var(--purple-glow)" }
+        h('div', { style: { display: 'flex', flexDirection: 'column', gap: 8 } },
+          scenarios.map(sc => h('div', {
+            key: sc.day,
+            className: 'station-choice-card',
+            onClick: () => onSelectDay(sc.day)
           },
-            h("div", { style: { display: "flex", justifyContent: "space-between", marginBottom: 4 } },
-              h("h5", { style: { color: "#ffffff", fontFamily: "var(--font-display)" } }, `Day ${d.day}: ${d.scenarioTitle}`),
-              h("span", { className: "chip chip-cyan" }, d.chosenLabel)
+            h('div', { className: 'choice-top-line' },
+              h('span', { className: 'choice-label' }, `DAY ${sc.day}: ${sc.title}`),
+              h('span', { className: 'choice-benefit-badge' }, sc.day === currentDay ? 'CURRENT DAY' : 'SIMULATE')
             ),
-            h("p", { style: { fontSize: "0.88rem", color: "#e2e8f0", lineHeight: 1.5 } }, d.scienceFact)
+            h('div', { style: { fontSize: '0.82rem', color: 'var(--text-muted)' } },
+              sc.problem.slice(0, 110) + '...'
+            )
           ))
-        ),
-
-        h("div", { style: { display: "flex", justifyContent: "flex-end", marginTop: 8 } },
-          h("button", { className: "btn btn-ghost btn-sm", onClick: onClose }, "Close Log")
         )
       )
     );
   }
 
-  // MODAL: DAILY REPORT
-  function ModalDailyReport({ report, onClose }) {
-    return h("div", { className: "modal-overlay", onClick: onClose },
-      h("div", { className: "modal-content", onClick: (e) => e.stopPropagation() },
-        h("div", { className: "modal-header" },
-          h("div", { style: { display: "flex", alignItems: "center", gap: 8 } },
-            h("span", { style: { fontSize: 22 } }, "📋"),
-            h("h3", { style: { fontFamily: "var(--font-display)", color: "var(--cyan-glow)" } },
-              `Day ${report.prevDay} Summary → Day ${report.nextDay} Initialized`
-            )
-          ),
-          h("button", { className: "modal-close-btn", onClick: onClose }, "×")
+  // =========================================================================
+  // SETTINGS MODAL (Audio Volume, Sensitivity, Graphics)
+  // =========================================================================
+  function SettingsModal({ settings, setSettings, onToggleFullscreen, onClose }) {
+    return h('div', { className: 'modal-backdrop', onClick: onClose },
+      h('div', { className: 'station-dialog-card', style: { width: 500 }, onClick: (e) => e.stopPropagation() },
+        h('div', { className: 'station-header' },
+          h('h2', { className: 'station-title' }, 'SIMULATOR SETTINGS'),
+          h('button', { className: 'pause-btn', style: { padding: '6px 14px' }, onClick: onClose }, '✕')
         ),
 
-        h("div", { style: { display: "flex", flexDirection: "column", gap: 12 } },
-          h("div", { style: { display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 10, fontSize: "0.88rem", fontFamily: "var(--font-mono)" } },
-            h("div", { style: { background: "rgba(0,0,0,0.3)", padding: 8, borderRadius: "var(--radius-sm)" } }, `💨 Oxygen Consumed: -${report.o2Consumed}u`),
-            h("div", { style: { background: "rgba(0,0,0,0.3)", padding: 8, borderRadius: "var(--radius-sm)" } }, `💧 Water Consumed: -${report.waterConsumed}u`),
-            h("div", { style: { background: "rgba(0,0,0,0.3)", padding: 8, borderRadius: "var(--radius-sm)" } }, `🌱 Net Food Harvest: ${report.foodNet >= 0 ? '+' : ''}${report.foodNet}u`),
-            h("div", { style: { background: "rgba(0,0,0,0.3)", padding: 8, borderRadius: "var(--radius-sm)" } }, `⚡ Net Energy Draw: ${report.energyNet >= 0 ? '+' : ''}${report.energyNet}u`),
-            h("div", { style: { background: "rgba(0,0,0,0.3)", padding: 8, borderRadius: "var(--radius-sm)" } }, `🛡️ Radiation Shield: -${report.radiationDecay}u`),
-            h("div", { style: { background: "rgba(0,0,0,0.3)", padding: 8, borderRadius: "var(--radius-sm)", color: report.healthChange >= 0 ? "var(--green-safe)" : "var(--red-alert)" } },
-              `🩺 Crew Health Impact: ${report.healthChange >= 0 ? '+' : ''}${report.healthChange}%`
-            )
+        h('div', { className: 'settings-group' },
+          h('div', { className: 'setting-row' },
+            h('span', null, `Master Volume (${settings.masterVolume}%)`),
+            h('input', {
+              type: 'range', min: 0, max: 100,
+              value: settings.masterVolume,
+              className: 'setting-slider',
+              onChange: (e) => setSettings({ ...settings, masterVolume: +e.target.value })
+            })
           ),
 
-          report.warnings.length > 0 && h("div", { style: { display: "flex", flexDirection: "column", gap: 6, marginTop: 6 } },
-            h("h5", { style: { color: "var(--red-alert)", fontFamily: "var(--font-display)", fontSize: "0.82rem" } }, "⚠️ CRITICAL SYSTEM ALERTS:"),
-            report.warnings.map((w, idx) => h("div", {
-              key: idx,
-              style: { background: "rgba(239,68,68,0.15)", borderLeft: "3px solid var(--red-alert)", padding: "6px 10px", fontSize: "0.82rem", color: "#fca5a5" }
-            }, w))
+          h('div', { className: 'setting-row' },
+            h('span', null, `Sound FX Volume (${settings.sfxVolume}%)`),
+            h('input', {
+              type: 'range', min: 0, max: 100,
+              value: settings.sfxVolume,
+              className: 'setting-slider',
+              onChange: (e) => setSettings({ ...settings, sfxVolume: +e.target.value })
+            })
+          ),
+
+          h('div', { className: 'setting-row' },
+            h('span', null, `Ambient Space Drone (${settings.ambientVolume}%)`),
+            h('input', {
+              type: 'range', min: 0, max: 100,
+              value: settings.ambientVolume,
+              className: 'setting-slider',
+              onChange: (e) => setSettings({ ...settings, ambientVolume: +e.target.value })
+            })
+          ),
+
+          h('div', { className: 'setting-row' },
+            h('span', null, `Mouse Sensitivity (${settings.mouseSensitivity.toFixed(1)}x)`),
+            h('input', {
+              type: 'range', min: 5, max: 30,
+              value: Math.round(settings.mouseSensitivity * 10),
+              className: 'setting-slider',
+              onChange: (e) => setSettings({ ...settings, mouseSensitivity: e.target.value / 10 })
+            })
+          ),
+
+          h('div', { className: 'setting-row' },
+            h('span', null, 'Display Mode'),
+            h('button', { className: 'pause-btn', style: { padding: '6px 14px' }, onClick: onToggleFullscreen }, 'Toggle Fullscreen')
           )
         ),
 
-        h("div", { style: { display: "flex", justifyContent: "flex-end", marginTop: 8 } },
-          h("button", { className: "btn btn-cyan btn-sm", onClick: onClose }, "Acknowledge & Proceed")
+        h('div', { style: { display: 'flex', justifyContent: 'flex-end', marginTop: 14 } },
+          h('button', { className: 'pause-btn primary', onClick: onClose }, 'Save & Close')
         )
       )
     );
   }
 
-  // Mount Application to DOM
-  const rootElement = document.getElementById("root");
-  if (rootElement) {
-    const root = window.ReactDOM.createRoot(rootElement);
+  // =========================================================================
+  // SCIENCE CURRICULUM LOG (NASA Educational Concepts)
+  // =========================================================================
+  function ScienceLogModal({ decisionsHistory, onClose }) {
+    return h('div', { className: 'modal-backdrop', onClick: onClose },
+      h('div', { className: 'station-dialog-card', style: { width: 780 }, onClick: (e) => e.stopPropagation() },
+        h('div', { className: 'station-header' },
+          h('h2', { className: 'station-title' }, '🧪 NASA SPACE SCIENCE LOG'),
+          h('button', { className: 'pause-btn', style: { padding: '6px 14px' }, onClick: onClose }, '✕')
+        ),
+
+        h('p', { style: { color: 'var(--text-muted)', fontSize: '0.9rem' } },
+          'Educational records grounded in lunar mission architecture, environmental control and life support systems (ECLSS), and space radiation physics.'
+        ),
+
+        h('div', { style: { display: 'flex', flexDirection: 'column', gap: 12, maxHeight: '60vh', overflowY: 'auto' } },
+          decisionsHistory.length === 0 ? h('div', { className: 'station-problem-box' },
+            'No operational dilemmas resolved yet. Walk to base structures in 3D, press [E] to investigate anomalies, and record genuine space science takeaways.'
+          ) : decisionsHistory.map((d, i) => h('div', { key: i, className: 'science-curriculum-box' },
+            h('div', { className: 'science-curriculum-header' }, `Day ${d.day}: ${d.scenarioTitle} • Action: ${d.chosenLabel}`),
+            h('p', null, d.scienceFact)
+          ))
+        )
+      )
+    );
+  }
+
+  // =========================================================================
+  // MISSION RESULTS & DEBRIEFING (10-Day Complete or Abort)
+  // =========================================================================
+  function MissionResultsModal({ day, resources, scienceScore, decisionsHistory, onPlayAgain }) {
+    const isAlive = resources.health > 0;
+    const score = Math.min(100, Math.round(day * 4 + (resources.health * 0.25) + (resources.oxygen * 0.1) + (scienceScore * 0.5)));
+
+    return h('div', { className: 'modal-backdrop' },
+      h('div', { className: 'station-dialog-card', style: { width: 720, textAlign: 'center' } },
+        h('div', { style: { fontSize: '2.5rem', marginBottom: 8 } }, isAlive ? '🏆' : '⚠️'),
+        h('h2', { className: 'station-title', style: { color: isAlive ? 'var(--cyan-primary)' : 'var(--red-alert)' } },
+          isAlive ? '10-DAY LUNAR MISSION COMPLETED' : 'CRITICAL LIFE SUPPORT FAILURE'
+        ),
+        h('p', { style: { color: '#cbd5e1', fontSize: '1.1rem', margin: '8px 0 18px' } },
+          isAlive ? 'Commander, your crew survived the expedition and qualified Astrobase for permanent settlement!' : 'Crew health reached zero due to critical life support depletions.'
+        ),
+
+        h('div', { style: { display: 'flex', justifyContent: 'center', gap: 20, margin: '14px 0' } },
+          h('div', { className: 'station-problem-box', style: { width: 140 } },
+            h('div', { style: { fontSize: '0.75rem', color: 'var(--text-dim)' } }, 'FINAL SCORE'),
+            h('div', { style: { fontSize: '2rem', fontFamily: 'var(--font-display)', color: 'var(--cyan-primary)' } }, `${score}/100`)
+          ),
+          h('div', { className: 'station-problem-box', style: { width: 140 } },
+            h('div', { style: { fontSize: '0.75rem', color: 'var(--text-dim)' } }, 'DAYS SURVIVED'),
+            h('div', { style: { fontSize: '2rem', fontFamily: 'var(--font-display)', color: 'var(--gold-accent)' } }, `${day}/10`)
+          ),
+          h('div', { className: 'station-problem-box', style: { width: 140 } },
+            h('div', { style: { fontSize: '0.75rem', color: 'var(--text-dim)' } }, 'CREW HEALTH'),
+            h('div', { style: { fontSize: '2rem', fontFamily: 'var(--font-display)', color: 'var(--green-safe)' } }, `${Math.round(resources.health)}%`)
+          )
+        ),
+
+        h('button', { className: 'pause-btn primary', style: { margin: '16px auto 0', width: 240 }, onClick: onPlayAgain },
+          'Return to Main Menu'
+        )
+      )
+    );
+  }
+
+  // Mount to DOM
+  const rootEl = document.getElementById('ui-root');
+  if (rootEl) {
+    const root = window.ReactDOM.createRoot(rootEl);
     root.render(h(App));
   }
 })();

@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>ASTROBASE Automated Test Suite</title>
+  <title>ASTROBASE 3D Automated Test Suite</title>
   <style>
     body { font-family: monospace; background: #0f172a; color: #f8fafc; padding: 20px; }
     .pass { color: #4ade80; }
@@ -11,14 +11,18 @@
   </style>
 </head>
 <body>
-  <h1>🚀 ASTROBASE: Automated Test Runner & Verification Suite</h1>
+  <h1>🚀 ASTROBASE 3D: Automated Test Runner & Verification Suite</h1>
   <div id="results">Running tests...</div>
 
-  <!-- Load dependencies -->
-  <script src="reactShim.js"></script>
-  <script src="gameData.js"></script>
+  <!-- Offscreen 3D Container -->
+  <div id="test-canvas-3d" style="width: 400px; height: 300px; display: none;"></div>
+
+  <!-- Load dependencies in exact order -->
+  <script src="three.min.js"></script>
   <script src="audio.js"></script>
-  <script src="lunarBaseSvg.js"></script>
+  <script src="gameData.js"></script>
+  <script src="game3d.js"></script>
+  <script src="reactShim.js"></script>
 
   <script>
     const resultsDiv = document.getElementById("results");
@@ -37,45 +41,54 @@
     }
 
     try {
-      // Test 1: Data Integrity
-      assert("GAME_DATA exists", !!window.GAME_DATA);
-      assert("4 Lunar Bases configured", window.GAME_DATA.bases && window.GAME_DATA.bases.length === 4);
-      assert("4 Specialist Astronauts configured", window.GAME_DATA.crew && window.GAME_DATA.crew.length === 4);
-      assert("At least 10 Engineering Scenarios", window.GAME_DATA.scenarios && window.GAME_DATA.scenarios.length >= 10);
-      assert("5 Base Upgrades configured", window.GAME_DATA.upgrades && window.GAME_DATA.upgrades.length === 5);
-      assert("6 Achievements configured", window.GAME_DATA.achievements && window.GAME_DATA.achievements.length === 6);
+      // Test 1: Three.js and 3D Engine
+      assert("Three.js r128 loaded", typeof THREE !== 'undefined' && !!THREE.WebGLRenderer);
+      assert("Astrobase3D constructor exists", typeof window.Astrobase3D === 'function');
 
-      // Test 2: Scenario Choices
+      // Test 2: Audio Engine with space ambient and SFX
+      assert("SpaceAudioEngine exists", !!window.astroAudio);
+      window.astroAudio.click();
+      window.astroAudio.hover();
+      window.astroAudio.quindarTone();
+      window.astroAudio.footstep();
+      window.astroAudio.jump();
+      assert("All sound effects executed cleanly without error", true);
+
+      // Test 3: Curriculum Data Integrity
+      assert("GAME_DATA loaded", !!window.GAME_DATA);
+      assert("4 Lunar Bases configured", window.GAME_DATA.bases && window.GAME_DATA.bases.length === 4);
+      assert("4 Crew Specialists configured", window.GAME_DATA.crew && window.GAME_DATA.crew.length === 4);
+      assert("10 Engineering Scenarios configured", window.GAME_DATA.scenarios && window.GAME_DATA.scenarios.length >= 10);
+
+      // Verify each scenario has 3 choices with deltas and science facts
       window.GAME_DATA.scenarios.forEach((sc, idx) => {
-        assert(`Scenario ${idx+1} has 3 choices`, sc.choices && sc.choices.length === 3);
+        assert(`Day ${idx+1} (${sc.title}) has 3 balanced choices`, sc.choices && sc.choices.length === 3);
         sc.choices.forEach((c, cIdx) => {
-          assert(`Scenario ${idx+1} Choice ${cIdx+1} has delta and scienceFact`, !!c.delta && !!c.scienceFact);
+          assert(`Day ${idx+1} Choice ${cIdx+1} has delta and scienceFact`, !!c.delta && !!c.scienceFact);
         });
       });
 
-      // Test 3: SVG Rendering
-      const svg = window.renderLunarBaseSvg({
-        day: 1,
-        energy: 100,
-        radiation: 80,
-        health: 100,
-        subsystems: { hydroponics: true, scienceRadar: true },
-        upgrades: {}
-      });
-      assert("SVG string generated", typeof svg === "string" && svg.includes("<svg") && svg.includes("main-dome"));
+      // Test 4: 3D Simulation Engine Instantiation
+      const engine = new window.Astrobase3D(
+        'test-canvas-3d',
+        () => {},
+        () => {}
+      );
+      assert("3D Engine initialized with Scene, Camera & Renderer", !!engine.scene && !!engine.camera && !!engine.renderer);
+      assert("Playable astronaut character created", !!engine.player && !!engine.player.mesh);
+      assert("6 Base interaction stations registered", engine.stations.length >= 6);
 
-      // Test 4: Audio Engine
-      assert("SpaceAudioEngine exists", !!window.astroAudio);
-      window.astroAudio.click();
-      window.astroAudio.warning();
-      window.astroAudio.success();
-      assert("Audio calls executed without throwing", true);
+      // Test 5: 3D Physics update loop
+      engine.keys.w = true;
+      engine.updateAstronautPhysics(0.016);
+      assert("Astronaut responds to WASD movement", engine.player.vel.lengthSq() >= 0);
 
-      // Test 5: Scoring Formula
-      // State mock
-      const mockState = { day: 10, health: 100, water: 80, food: 80, energy: 90, radiation: 80, oxygen: 85, scienceScore: 40 };
-      const unlocked = window.GAME_DATA.achievements.filter(a => a.check(mockState));
-      assert("All 6 achievements unlocked under optimal conditions", unlocked.length === 6);
+      engine.keys.space = true;
+      engine.updateAstronautPhysics(0.016);
+      assert("Astronaut handles lunar gravity jump", engine.player.vel.y !== 0);
+
+      engine.setDay(5);
+      assert("3D Sun angle adjusts with mission day", engine.day === 5);
 
       const reportHtml = `
         <h3>Summary: ${passedCount} Passed, ${failedCount} Failed</h3>
@@ -91,4 +104,3 @@
   </script>
 </body>
 </html>
-

@@ -78,12 +78,12 @@ def check_balance(filename):
     return True
 
 all_ok = True
-for f in ['gameData.js', 'audio.js', 'lunarBaseSvg.js', 'reactShim.js', 'app.js']:
+for f in ['gameData.js', 'audio.js', 'lunarBaseSvg.js', 'reactShim.js', 'app.js', 'game3d.js']:
     if not check_balance(f):
         all_ok = False
 
 if all_ok:
-    print("ALL 5 JAVASCRIPT FILES ARE 100% BALANCED AND SYNTACTICALLY SOUND!")
+    print("ALL 6 JAVASCRIPT FILES ARE 100% BALANCED AND SYNTACTICALLY SOUND!")
 else:
     sys.exit(1)
 
