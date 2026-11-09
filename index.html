@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="ASTROBASE: Junior Astronaut Mission Trainer - Educational Space Simulation Game for Students">
+  <title>ASTROBASE: Junior Astronaut Mission Trainer</title>
+
+  <!-- Google Fonts: Orbitron (Display), Rajdhani (HUD/Body), JetBrains Mono (Telemetry) -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Orbitron:wght@500;700;800;900&family=Rajdhani:wght@500;600;700&display=swap" rel="stylesheet">
+
+  <!-- Core Game Styles -->
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <!-- Twinkling Deep Space Starfield -->
+  <div class="stars-bg" aria-hidden="true"></div>
+
+  <!-- React Application Mount Point -->
+  <div id="root">
+    <!-- Initial Loading State -->
+    <div style="min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; color: #38bdf8; font-family: sans-serif; gap: 16px;">
+      <div style="font-size: 42px; animation: spin 2s infinite linear;">🚀</div>
+      <div style="letter-spacing: 2px; font-weight: bold;">INITIALIZING ASTROBASE FLIGHT SYSTEMS...</div>
+    </div>
+  </div>
+
+  <style>
+    @keyframes spin {
+      from { transform: rotate(0deg); }
+      to { transform: rotate(360deg); }
+    }
+  </style>
+
+  <!-- 1. Offline Micro-React Fallback Engine -->
+  <script src="reactShim.js"></script>
+
+  <!-- 2. Official React 18 UMD (Loads if online; falls back to reactShim if offline) -->
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+
+  <!-- 3. Space Game Data & Curriculum -->
+  <script src="gameData.js"></script>
+
+  <!-- 4. Synthesized Space Audio Engine -->
+  <script src="audio.js"></script>
+
+  <!-- 5. Interactive Lunar Base SVG Illustration Generator -->
+  <script src="lunarBaseSvg.js"></script>
+
+  <!-- 6. Main Application Logic -->
+  <script src="app.js"></script>
+</body>
+</html>
+

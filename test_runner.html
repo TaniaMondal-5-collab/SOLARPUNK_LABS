@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>ASTROBASE Automated Test Suite</title>
+  <style>
+    body { font-family: monospace; background: #0f172a; color: #f8fafc; padding: 20px; }
+    .pass { color: #4ade80; }
+    .fail { color: #f87171; font-weight: bold; }
+    .test-box { background: #1e293b; padding: 12px; margin-bottom: 8px; border-radius: 6px; }
+  </style>
+</head>
+<body>
+  <h1>🚀 ASTROBASE: Automated Test Runner & Verification Suite</h1>
+  <div id="results">Running tests...</div>
+
+  <!-- Load dependencies -->
+  <script src="reactShim.js"></script>
+  <script src="gameData.js"></script>
+  <script src="audio.js"></script>
+  <script src="lunarBaseSvg.js"></script>
+
+  <script>
+    const resultsDiv = document.getElementById("results");
+    const testLog = [];
+    let passedCount = 0;
+    let failedCount = 0;
+
+    function assert(name, condition, details = "") {
+      if (condition) {
+        passedCount++;
+        testLog.push(`<div class="test-box pass">✅ PASS: ${name}</div>`);
+      } else {
+        failedCount++;
+        testLog.push(`<div class="test-box fail">❌ FAIL: ${name} - ${details}</div>`);
+      }
+    }
+
+    try {
+      // Test 1: Data Integrity
+      assert("GAME_DATA exists", !!window.GAME_DATA);
+      assert("4 Lunar Bases configured", window.GAME_DATA.bases && window.GAME_DATA.bases.length === 4);
+      assert("4 Specialist Astronauts configured", window.GAME_DATA.crew && window.GAME_DATA.crew.length === 4);
+      assert("At least 10 Engineering Scenarios", window.GAME_DATA.scenarios && window.GAME_DATA.scenarios.length >= 10);
+      assert("5 Base Upgrades configured", window.GAME_DATA.upgrades && window.GAME_DATA.upgrades.length === 5);
+      assert("6 Achievements configured", window.GAME_DATA.achievements && window.GAME_DATA.achievements.length === 6);
+
+      // Test 2: Scenario Choices
+      window.GAME_DATA.scenarios.forEach((sc, idx) => {
+        assert(`Scenario ${idx+1} has 3 choices`, sc.choices && sc.choices.length === 3);
+        sc.choices.forEach((c, cIdx) => {
+          assert(`Scenario ${idx+1} Choice ${cIdx+1} has delta and scienceFact`, !!c.delta && !!c.scienceFact);
+        });
+      });
+
+      // Test 3: SVG Rendering
+      const svg = window.renderLunarBaseSvg({
+        day: 1,
+        energy: 100,
+        radiation: 80,
+        health: 100,
+        subsystems: { hydroponics: true, scienceRadar: true },
+        upgrades: {}
+      });
+      assert("SVG string generated", typeof svg === "string" && svg.includes("<svg") && svg.includes("main-dome"));
+
+      // Test 4: Audio Engine
+      assert("SpaceAudioEngine exists", !!window.astroAudio);
+      window.astroAudio.click();
+      window.astroAudio.warning();
+      window.astroAudio.success();
+      assert("Audio calls executed without throwing", true);
+
+      // Test 5: Scoring Formula
+      // State mock
+      const mockState = { day: 10, health: 100, water: 80, food: 80, energy: 90, radiation: 80, oxygen: 85, scienceScore: 40 };
+      const unlocked = window.GAME_DATA.achievements.filter(a => a.check(mockState));
+      assert("All 6 achievements unlocked under optimal conditions", unlocked.length === 6);
+
+      const reportHtml = `
+        <h3>Summary: ${passedCount} Passed, ${failedCount} Failed</h3>
+        ${testLog.join("")}
+      `;
+      resultsDiv.innerHTML = reportHtml;
+
+      console.log(`TEST RUN COMPLETE: ${passedCount} PASSED, ${failedCount} FAILED.`);
+    } catch (e) {
+      resultsDiv.innerHTML = `<div class="test-box fail">EXCEPTION: ${e.message}</div>`;
+      console.error(e);
+    }
+  </script>
+</body>
+</html>
+
